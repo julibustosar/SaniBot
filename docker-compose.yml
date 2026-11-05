@@ -8,7 +8,7 @@ services:
     environment:
       POSTGRES_DB: sanibot
       POSTGRES_USER: sanibot
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sanibot-local}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en el archivo .env}
     volumes: [pgdata:/var/lib/postgresql/data]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U sanibot"]
@@ -36,7 +36,7 @@ services:
       sanitas: {condition: service_started}
     env_file: [.env]
     environment:
-      SANIBOT_DATABASE_URL: postgresql+psycopg://sanibot:${POSTGRES_PASSWORD:-sanibot-local}@db:5432/sanibot
+      SANIBOT_DATABASE_URL: postgresql+psycopg://sanibot:${POSTGRES_PASSWORD}@db:5432/sanibot
       SANIBOT_BASE_URL: http://localhost:8000
       SANIBOT_OAUTH_AUTHORIZE_URL: http://localhost:8100/oauth/authorize
       SANIBOT_OAUTH_TOKEN_URL: http://sanitas:8100/oauth/token

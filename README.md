@@ -58,6 +58,7 @@ cp .env.example .env
 # Genera la llave de cifrado (solo usa la librería estándar de Python) y la escribe en .env
 KEY=$(python -c "import base64,os; print(base64.urlsafe_b64encode(os.urandom(32)).decode())")
 sed -i "s|^SANIBOT_TOKEN_ENCRYPTION_KEYS=.*|SANIBOT_TOKEN_ENCRYPTION_KEYS=$KEY|" .env
+# Contraseña de la base de datos: escriba una propia en la línea POSTGRES_PASSWORD= del .env
 docker compose up --build
 ```
 

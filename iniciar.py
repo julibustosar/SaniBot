@@ -44,17 +44,18 @@ def leer_env(path: Path) -> dict[str, str]:
 def asegurar_env() -> dict[str, str]:
     if not ENV.exists():
         ejemplo = RAIZ / ".env.example"
-        ENV.write_text(ejemplo.read_text(encoding="utf-8") if ejemplo.exists() else "", encoding="utf-8")
+        if ejemplo.exists():
+            shutil.copyfile(ejemplo, ENV)
+        else:
+            ENV.touch()
         print("· Creé el archivo .env a partir de .env.example")
     datos = leer_env(ENV)
     if not datos.get("SANIBOT_TOKEN_ENCRYPTION_KEYS"):
+        # Solo se agrega una línea al final (la última aparición de una variable es la que vale);
+        # el contenido del archivo nunca se vuelve a escribir.
         llave = base64.urlsafe_b64encode(os.urandom(32)).decode()
-        texto = ENV.read_text(encoding="utf-8")
-        if re.search(r"^SANIBOT_TOKEN_ENCRYPTION_KEYS=.*$", texto, flags=re.M):
-            texto = re.sub(r"^SANIBOT_TOKEN_ENCRYPTION_KEYS=.*$", f"SANIBOT_TOKEN_ENCRYPTION_KEYS={llave}", texto, flags=re.M)
-        else:
-            texto += f"\nSANIBOT_TOKEN_ENCRYPTION_KEYS={llave}\n"
-        ENV.write_text(texto, encoding="utf-8")
+        with open(ENV, "a", encoding="utf-8") as f:
+            f.write(f"\nSANIBOT_TOKEN_ENCRYPTION_KEYS={llave}\n")
         datos["SANIBOT_TOKEN_ENCRYPTION_KEYS"] = llave
         print("· Generé la llave de cifrado y la guardé en .env (consérvala: cifra los tokens guardados)")
     return datos

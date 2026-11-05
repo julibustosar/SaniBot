@@ -6,6 +6,7 @@ solo se modifica este archivo.
 
 import base64
 import hashlib
+import re
 import secrets
 from dataclasses import dataclass
 from datetime import datetime
@@ -15,6 +16,8 @@ import httpx
 
 from sanibot.config import Settings
 from sanibot.timeutil import parse_iso
+
+_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")  # formato de id de HL7 FHIR
 
 
 class SanitasError(Exception):
@@ -79,8 +82,12 @@ class SanitasClient:
         self.http = http or httpx.Client(timeout=settings.sanitas_timeout_seconds)
 
     # ------------------------------------------------------------ utilidades
-    def _url(self, path: str) -> str:
-        return self.s.sanitas_api_url.rstrip("/") + path
+    def _url(self, path: str, *ids: str) -> str:
+        """Arma la URL de la API de Sanitas. Los identificadores se validan para que nadie pueda alterar la ruta."""
+        for i in ids:
+            if not _ID.fullmatch(str(i)):
+                raise SanitasError("Identificador inválido")
+        return self.s.sanitas_api_url.rstrip("/") + path.format(*ids)
 
     def _request(self, method: str, url: str, **kw) -> httpx.Response:
         try:
@@ -151,7 +158,7 @@ class SanitasClient:
 
     def get_appointment(self, token: str, appointment_id: str) -> Cita | None:
         try:
-            return Cita.from_fhir(self._request("GET", self._url(f"/Appointment/{appointment_id}"),
+            return Cita.from_fhir(self._request("GET", self._url("/Appointment/{}", appointment_id),
                                                 headers=self._bearer(token)).json())
         except SanitasError as exc:
             if isinstance(exc, SanitasAuthError):
@@ -164,12 +171,12 @@ class SanitasClient:
         return Cita.from_fhir(r.json())
 
     def cancel(self, token: str, appointment_id: str) -> None:
-        self._request("POST", self._url(f"/Appointment/{appointment_id}/$cancel"), headers=self._bearer(token))
+        self._request("POST", self._url("/Appointment/{}/$cancel", appointment_id), headers=self._bearer(token))
 
     # ------------------------------------------------------------ cupos (credencial de servicio)
     def get_slot(self, slot_id: str) -> Cupo | None:
         try:
-            return Cupo.from_fhir(self._request("GET", self._url(f"/Slot/{slot_id}"), headers=self._service()).json())
+            return Cupo.from_fhir(self._request("GET", self._url("/Slot/{}", slot_id), headers=self._service()).json())
         except SlotUnavailable:
             return None
 
@@ -179,13 +186,13 @@ class SanitasClient:
         return [Cupo.from_fhir(e) for e in r.json().get("entry", [])]
 
     def hold_slot(self, slot_id: str, minutes: int) -> str:
-        r = self._request("POST", self._url(f"/Slot/{slot_id}/$hold"), headers=self._service(),
+        r = self._request("POST", self._url("/Slot/{}/$hold", slot_id), headers=self._service(),
                           json={"minutes": minutes})
         return r.json()["hold_id"]
 
     def release_slot(self, slot_id: str, hold_id: str) -> None:
         try:
-            self._request("POST", self._url(f"/Slot/{slot_id}/$release"), headers=self._service(),
+            self._request("POST", self._url("/Slot/{}/$release", slot_id), headers=self._service(),
                           json={"hold_id": hold_id})
         except SanitasError:
             pass  # el apartado vence solo en Sanitas

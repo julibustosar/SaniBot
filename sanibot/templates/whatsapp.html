@@ -16,7 +16,7 @@
 <form method="post" action="/whatsapp/verificar">
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <label for="codigo">Código de 6 dígitos</label>
-  <input id="codigo" class="code" name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required autofocus>
+  <input id="codigo" class="code" name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
   <div class="actions"><button>Verificar</button><a href="/whatsapp">Cambiar número o pedir otro código</a></div>
 </form>
 {% endif %}

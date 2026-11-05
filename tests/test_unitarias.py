@@ -80,3 +80,34 @@ def test_parse_webhook_de_whatsapp():
     msgs, statuses = parse_webhook(payload)
     assert [m["value"] for m in msgs] == ["ACEPTAR:1", "RECHAZAR:2", "BAJA"]
     assert statuses == [{"id": "wamid.1", "status": "read", "error_code": None}]
+
+
+def test_ids_invalidos_no_alteran_la_ruta_hacia_sanitas():
+    import pytest
+
+    from sanibot.config import Settings
+    from sanibot.integrations.sanitas import SanitasClient, SanitasError
+
+    c = SanitasClient(Settings(_env_file=None))
+    assert c._url("/Slot/{}/$hold", "slot-123.a_b").endswith("/fhir/Slot/slot-123.a_b/$hold")
+    for malo in ("../oauth/revoke", "a/b", "a?b=1", "", "x" * 65):
+        with pytest.raises(SanitasError):
+            c._url("/Appointment/{}", malo)
+
+
+def test_auditoria_no_permite_inyectar_lineas_en_el_log():
+    from sanibot.services.audit import _una_linea
+
+    assert _una_linea("ok\nauditoria falsa") == "ok\\nauditoria falsa"
+
+
+def test_lanzador_agrega_la_llave_sin_reescribir_el_env(tmp_path, monkeypatch):
+    import iniciar
+
+    env = tmp_path / ".env"
+    env.write_text("SANIBOT_TOKEN_ENCRYPTION_KEYS=\nOTRA=1\n", encoding="utf-8")
+    monkeypatch.setattr(iniciar, "ENV", env)
+    datos = iniciar.asegurar_env()
+    assert datos["SANIBOT_TOKEN_ENCRYPTION_KEYS"] and datos["OTRA"] == "1"
+    assert iniciar.leer_env(env)["SANIBOT_TOKEN_ENCRYPTION_KEYS"] == datos["SANIBOT_TOKEN_ENCRYPTION_KEYS"]
+    assert env.read_text(encoding="utf-8").startswith("SANIBOT_TOKEN_ENCRYPTION_KEYS=\nOTRA=1\n")
