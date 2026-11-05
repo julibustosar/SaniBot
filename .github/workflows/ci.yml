@@ -28,7 +28,7 @@ jobs:
         run: pytest --cov --cov-report=xml --cov-fail-under=80
       - name: SonarQube Cloud
         if: env.SONAR_TOKEN != ''
-        uses: SonarSource/sonarqube-scan-action@2f77a1ec69fb1d595b06f35ab27e97605bdef703  # v5
+        uses: SonarSource/sonarqube-scan-action@4d1dc0c91ee400dcf8a6dddf2f705ac36542e304  # v8.4.0
 
   dependencias:
     runs-on: ubuntu-latest
