@@ -1,0 +1,207 @@
+"""Arranca todo el entorno de demostración de SaniBot con un solo comando (Windows, macOS y Linux).
+
+    python iniciar.py                    # arranca SaniBot y abre la página del paciente
+    python iniciar.py --tunel            # además abre el túnel para el webhook de WhatsApp (WhatsApp real)
+    python iniciar.py --consola          # abre la consola de demostración (/demo) en lugar de la página del paciente
+    python iniciar.py --simulador 0      # sin cancelaciones automáticas (por defecto: 120 por hora, en segundo plano)
+
+Lee el archivo .env (si no existe, lo crea a partir de .env.example y genera la llave de cifrado).
+Ctrl+C detiene todo.
+"""
+
+import argparse
+import base64
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import threading
+import time
+import urllib.request
+import webbrowser
+from pathlib import Path
+
+RAIZ = Path(__file__).resolve().parent
+ENV = RAIZ / ".env"
+PUERTO_SANIBOT, PUERTO_SANITAS = 8000, 8100
+
+
+def leer_env(path: Path) -> dict[str, str]:
+    datos: dict[str, str] = {}
+    if not path.exists():
+        return datos
+    for linea in path.read_text(encoding="utf-8").splitlines():
+        linea = linea.strip()
+        if not linea or linea.startswith("#") or "=" not in linea:
+            continue
+        k, v = linea.split("=", 1)
+        datos[k.strip()] = v.strip().strip('"').strip("'")
+    return datos
+
+
+def asegurar_env() -> dict[str, str]:
+    if not ENV.exists():
+        ejemplo = RAIZ / ".env.example"
+        ENV.write_text(ejemplo.read_text(encoding="utf-8") if ejemplo.exists() else "", encoding="utf-8")
+        print("· Creé el archivo .env a partir de .env.example")
+    datos = leer_env(ENV)
+    if not datos.get("SANIBOT_TOKEN_ENCRYPTION_KEYS"):
+        llave = base64.urlsafe_b64encode(os.urandom(32)).decode()
+        texto = ENV.read_text(encoding="utf-8")
+        if re.search(r"^SANIBOT_TOKEN_ENCRYPTION_KEYS=.*$", texto, flags=re.M):
+            texto = re.sub(r"^SANIBOT_TOKEN_ENCRYPTION_KEYS=.*$", f"SANIBOT_TOKEN_ENCRYPTION_KEYS={llave}", texto, flags=re.M)
+        else:
+            texto += f"\nSANIBOT_TOKEN_ENCRYPTION_KEYS={llave}\n"
+        ENV.write_text(texto, encoding="utf-8")
+        datos["SANIBOT_TOKEN_ENCRYPTION_KEYS"] = llave
+        print("· Generé la llave de cifrado y la guardé en .env (consérvala: cifra los tokens guardados)")
+    return datos
+
+
+def entorno(datos: dict[str, str], simulador: float) -> dict[str, str]:
+    env = {**os.environ, **datos, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+    sanitas = f"http://127.0.0.1:{PUERTO_SANITAS}"
+    defaults = {
+        "SANIBOT_BASE_URL": f"http://localhost:{PUERTO_SANIBOT}",
+        "SANIBOT_OAUTH_AUTHORIZE_URL": f"http://localhost:{PUERTO_SANITAS}/oauth/authorize",
+        "SANIBOT_OAUTH_TOKEN_URL": f"{sanitas}/oauth/token",
+        "SANIBOT_OAUTH_USERINFO_URL": f"{sanitas}/oauth/userinfo",
+        "SANIBOT_OAUTH_REVOKE_URL": f"{sanitas}/oauth/revoke",
+        "SANIBOT_SANITAS_API_URL": f"{sanitas}/fhir",
+    }
+    for k, v in defaults.items():
+        env.setdefault(k, v)
+    # La Sanitas simulada debe compartir los secretos con SaniBot.
+    env["MOCK_CLIENT_SECRET"] = env.get("SANIBOT_OAUTH_CLIENT_SECRET", "sanibot-secret")
+    env["MOCK_SERVICE_KEY"] = env.get("SANIBOT_SANITAS_SERVICE_KEY", "clave-servicio-sanibot")
+    env["MOCK_WEBHOOK_SECRET"] = env.get("SANIBOT_SANITAS_WEBHOOK_SECRET", "secreto-webhook-sanitas")
+    env["MOCK_SANIBOT_WEBHOOK_URL"] = f"http://127.0.0.1:{PUERTO_SANIBOT}/webhooks/sanitas"
+    env["MOCK_REDIRECT_URIS"] = f"{env['SANIBOT_BASE_URL']}/auth/callback"
+    env["MOCK_SIMULADOR_EVENTOS_POR_HORA"] = str(simulador)
+    return env
+
+
+def puerto_ocupado(puerto: int) -> bool:
+    import socket
+
+    with socket.socket() as s:
+        s.settimeout(0.5)
+        return s.connect_ex(("127.0.0.1", puerto)) == 0
+
+
+def esperar(url: str, segundos: int = 40) -> bool:
+    fin = time.time() + segundos
+    while time.time() < fin:
+        try:
+            with urllib.request.urlopen(url, timeout=2) as r:  # noqa: S310 - URL local fija
+                if r.status == 200:
+                    return True
+        except OSError:
+            time.sleep(0.5)
+    return False
+
+
+def abrir_tunel(procesos: list) -> str | None:
+    """Abre un túnel HTTPS hacia SaniBot con cloudflared o ngrok (el que esté instalado)."""
+    if shutil.which("cloudflared"):
+        p = subprocess.Popen(["cloudflared", "tunnel", "--url", f"http://localhost:{PUERTO_SANIBOT}"],  # noqa: S603,S607
+                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, encoding="utf-8")
+        procesos.append(p)
+        fin = time.time() + 30
+        while time.time() < fin and p.stdout:
+            linea = p.stdout.readline()
+            m = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", linea)
+            if m:
+                # seguir leyendo la salida en segundo plano para que cloudflared no se bloquee
+                threading.Thread(target=lambda: [None for _ in p.stdout], daemon=True).start()
+                return m.group(0)
+        return None
+    if shutil.which("ngrok"):
+        dominio = os.environ.get("NGROK_DOMAIN") or leer_env(ENV).get("NGROK_DOMAIN")
+        cmd = ["ngrok", "http", str(PUERTO_SANIBOT), "--log", "stdout"] + ([f"--url={dominio}"] if dominio else [])
+        procesos.append(subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))  # noqa: S603
+        fin = time.time() + 20
+        while time.time() < fin:
+            try:
+                with urllib.request.urlopen("http://127.0.0.1:4040/api/tunnels", timeout=2) as r:  # noqa: S310
+                    tuneles = json.load(r).get("tunnels", [])
+                    https = [t["public_url"] for t in tuneles if t["public_url"].startswith("https")]
+                    if https:
+                        return https[0]
+            except OSError:
+                pass
+            time.sleep(0.7)
+        return None
+    print("! No encontré cloudflared ni ngrok instalados. Revisa docs/GUIA_WHATSAPP_REAL.md, paso 4.")
+    return None
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--simulador", type=float, default=120, metavar="EVENTOS_POR_HORA",
+                    help="cancelaciones y aperturas simuladas por hora, en segundo plano (0 = apagado)")
+    ap.add_argument("--consola", action="store_true", help="abrir la consola de demostración (/demo)")
+    ap.add_argument("--tunel", action="store_true", help="abre un túnel público para el webhook de WhatsApp")
+    ap.add_argument("--sin-navegador", action="store_true", help="no abrir el navegador")
+    args = ap.parse_args()
+    os.chdir(RAIZ)
+
+    for puerto in (PUERTO_SANIBOT, PUERTO_SANITAS):
+        if puerto_ocupado(puerto):
+            print(f"! El puerto {puerto} ya está en uso. Cierra la otra terminal donde corre SaniBot o la Sanitas "
+                  "simulada (Ctrl+C) y vuelve a intentarlo.")
+            return 1
+
+    datos = asegurar_env()
+    env = entorno(datos, args.simulador)
+    modo = env.get("SANIBOT_WHATSAPP_MODE", "console")
+    py = sys.executable
+    procesos: list[subprocess.Popen] = []
+    try:
+        procesos.append(subprocess.Popen([py, "-m", "uvicorn", "mock_sanitas.app:app", "--host", "127.0.0.1",  # noqa: S603
+                                          "--port", str(PUERTO_SANITAS), "--no-access-log"], env=env))
+        procesos.append(subprocess.Popen([py, "-m", "uvicorn", "sanibot.main:app_factory", "--factory",  # noqa: S603
+                                          "--host", "127.0.0.1", "--port", str(PUERTO_SANIBOT), "--no-access-log"],
+                                         env=env))
+        ok = esperar(f"http://127.0.0.1:{PUERTO_SANITAS}/health") and esperar(f"http://127.0.0.1:{PUERTO_SANIBOT}/health")
+        if not ok or any(p.poll() is not None for p in procesos):
+            print("! No arrancaron los servidores. Revisa los mensajes de error de arriba.")
+            return 1
+        tunel = abrir_tunel(procesos) if args.tunel else None
+        demo = f"http://localhost:{PUERTO_SANIBOT}" + ("/demo" if args.consola else "/")
+        print("\n" + "=" * 68)
+        print(f"  SaniBot listo.  Abre: {demo}")
+        print(f"  WhatsApp: {'simulado en pantalla' if modo == 'console' else 'real (API de WhatsApp Cloud)'}"
+              f"   ·   Cancelaciones simuladas: {f'{args.simulador:g} por hora' if args.simulador else 'apagadas'}")
+        if tunel:
+            print(f"  Túnel: {tunel}\n  URL del webhook para Meta: {tunel}/webhooks/whatsapp")
+            print("  Token de verificación: el valor de SANIBOT_WHATSAPP_VERIFY_TOKEN del .env")
+        elif modo == "cloud":
+            print("  Modo cloud sin túnel: los botones de WhatsApp no llegarán a SaniBot. Usa --tunel.")
+        print("  Usuarios de prueba: paciente1, paciente2, paciente3 · contraseña sanitas123")
+        print("  Ctrl+C para detener todo.")
+        print("=" * 68 + "\n")
+        if not args.sin_navegador:
+            webbrowser.open(demo)
+        while all(p.poll() is None for p in procesos[:2]):
+            time.sleep(1)
+        print("! Uno de los servidores se detuvo.")
+        return 1
+    except KeyboardInterrupt:
+        print("\nDeteniendo…")
+        return 0
+    finally:
+        for p in procesos:
+            if p.poll() is None:
+                p.terminate()
+        for p in procesos:
+            try:
+                p.wait(timeout=8)
+            except subprocess.TimeoutExpired:
+                p.kill()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

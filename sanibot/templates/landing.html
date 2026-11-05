@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Citas más pronto{% endblock %}
+{% block page %}
+<section class="hero">
+  <div class="wrap">
+    <div>
+      <h1>Tu cita médica, antes de lo que esperabas</h1>
+      <p class="lead">Cuando alguien cancela una cita o se abre una agenda nueva en el centro médico {{ sede }}, SaniBot te ofrece ese cupo por WhatsApp. Tú decides con un botón; no tienes que volver a buscar en el portal.</p>
+      <div class="actions">
+        <a class="button light" href="/consentimiento">Activar SaniBot</a>
+        <a class="button ghost" href="#como-funciona">Cómo funciona</a>
+      </div>
+    </div>
+    <ol class="how" id="como-funciona" aria-label="Cómo funciona">
+      <li><div><b>Autorizas y entras con tu cuenta de Sanitas</b><span>SaniBot nunca ve tu contraseña.</span></div></li>
+      <li><div><b>Verificas tu WhatsApp</b><span>Es el único canal por el que SaniBot te escribe.</span></div></li>
+      <li><div><b>Eliges qué cita adelantar</b><span>Después puedes cerrar esta página; las ofertas llegan a tu WhatsApp.</span></div></li>
+    </ol>
+  </div>
+</section>
+<section class="wrap facts" aria-label="Lo que debes saber">
+  <div><h2>Tu cita actual no se pierde</h2><p>SaniBot reserva la cita nueva antes de cancelar la anterior. Si no respondes a una oferta, todo queda igual.</p></div>
+  <div><h2>Un canal que ya conoces</h2><p>Los mensajes llegan desde la cuenta verificada de SaniBot en WhatsApp, la misma que EPS Sanitas te presentó.</p></div>
+  <div><h2>Sanitas sigue a cargo</h2><p>Los correos de confirmación y cancelación de tus citas los sigue enviando Sanitas, como siempre.</p></div>
+</section>
+{% endblock %}

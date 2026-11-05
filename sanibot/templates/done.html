@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block title %}Búsqueda activada{% endblock %}
+{% block band %}<h1>Listo, SaniBot ya está buscando</h1><p>Puedes cerrar esta página. Todo lo demás pasa por WhatsApp.</p>{% endblock %}
+{% block content %}
+<h2>Qué pasa ahora</h2>
+<ol class="next">
+  <li><span>Cuando se libere un cupo antes de tu cita, SaniBot te escribe por WhatsApp.</span></li>
+  <li><span>Respondes con Aceptar o Rechazar. Tienes {{ minutos }} minutos.</span></li>
+  <li><span>Si aceptas, SaniBot cambia tu cita y te confirma por WhatsApp. Sanitas te enviará el correo de confirmación, como siempre.</span></li>
+</ol>
+<div class="actions"><a class="button secondary" href="/inicio">Ver mis búsquedas</a></div>
+{% endblock %}
+{% block aside %}
+<h2>Si cambias de opinión</h2>
+<p>Escribe BAJA a SaniBot en WhatsApp para dejar de recibir mensajes, o detén la búsqueda desde esta página.</p>
+{% endblock %}

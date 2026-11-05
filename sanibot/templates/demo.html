@@ -1,0 +1,207 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Consola de demostración · SaniBot</title>
+<style>
+:root{--bg:#eef2f0;--fg:#13201b;--muted:#4b5a54;--brand:#1458b8;--brand-d:#0b2e59;--card:#fff;--line:#d4ddd9;--wa-bg:#efeae2;--wa-in:#fff;--wa-out:#d9fdd3;--wa-head:#075e54;--warn:#8a5a00;--err:#a1261d}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--fg);height:100vh;display:flex;flex-direction:column}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:6px 16px;padding:10px 16px;background:var(--brand);color:#fff}
+header b{font-size:1.15em}header .modo{background:rgba(255,255,255,.18);border-radius:99px;padding:2px 10px;font-size:.85em}
+header .sp{margin-left:auto;font-size:.85em;opacity:.9}
+.grid{flex:1;display:grid;grid-template-columns:minmax(340px,1.15fr) minmax(300px,.9fr) minmax(300px,1fr);gap:12px;padding:12px;min-height:0}
+.col{background:var(--card);border:1px solid var(--line);border-radius:12px;display:flex;flex-direction:column;min-height:0;overflow:hidden}
+.col>h2{margin:0;font-size:.95em;padding:10px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:8px}
+.col>h2 .num{background:var(--brand);color:#fff;border-radius:50%;width:22px;height:22px;display:inline-grid;place-items:center;font-size:.8em}
+.col>h2 .act{margin-left:auto}
+button{font:inherit;border:0;border-radius:8px;padding:7px 12px;cursor:pointer;background:var(--brand);color:#fff;font-weight:600}
+button:hover{background:var(--brand-d)}button.ghost{background:#fff;color:var(--brand);border:1px solid var(--brand)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid #f2a900;outline-offset:2px}
+iframe{flex:1;border:0;width:100%;background:#fff}
+.chat{flex:1;overflow-y:auto;background:var(--wa-bg);padding:12px}
+.wa-top{background:var(--wa-head);color:#fff;padding:8px 14px;font-size:.9em;display:flex;gap:8px;align-items:center}
+.wa-top select{margin-left:auto;font:inherit;font-size:.85em;border-radius:6px;border:0;padding:3px}
+.msg{background:var(--wa-in);border-radius:0 10px 10px 10px;padding:8px 10px 6px;margin:0 0 10px;max-width:92%;box-shadow:0 1px 1px rgba(0,0,0,.08);white-space:pre-wrap}
+.msg.out{background:var(--wa-out);margin-left:auto;border-radius:10px 0 10px 10px}
+.msg .meta{display:block;text-align:right;font-size:.72em;color:var(--muted);margin-top:4px}
+.msg .to{display:block;font-size:.72em;color:var(--brand-d);font-weight:600;margin-bottom:2px}
+.msg .btns{display:flex;gap:6px;margin-top:6px;border-top:1px solid #e6e6e6;padding-top:6px}
+.msg .btns button{flex:1;background:#fff;color:#027eb5;border:1px solid #d6dde0}
+.msg .btns button[disabled]{opacity:.5;cursor:default}
+.msg .err{display:block;color:var(--err);font-size:.8em;margin-top:4px}
+.compose{display:flex;gap:6px;padding:8px;border-top:1px solid var(--line);background:#f0f2f5}
+.compose input{flex:1;font:inherit;padding:8px 10px;border-radius:18px;border:1px solid #cfd8d4}
+.note{background:#fff8e1;border-left:4px solid #f2a900;padding:8px 12px;font-size:.85em;margin:10px 12px}
+.side{flex:1;overflow-y:auto;padding:4px 14px 14px}
+.side h3{font-size:.85em;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:16px 0 6px}
+.sim{display:flex;flex-wrap:wrap;gap:8px;align-items:center;background:#f6f8f7;border:1px solid var(--line);border-radius:10px;padding:10px}
+.sim input{width:5.5em;font:inherit;padding:5px;border:1px solid #9aa9a3;border-radius:6px}
+.dot{width:10px;height:10px;border-radius:50%;background:#9aa9a3;display:inline-block}.dot.on{background:#1aa260;box-shadow:0 0 0 3px rgba(26,162,96,.25)}
+ul.plain{list-style:none;margin:0;padding:0}ul.plain li{padding:6px 0;border-bottom:1px solid #edf1ef;font-size:.88em}
+details{border:1px solid var(--line);border-radius:8px;margin:6px 0;padding:6px 10px;font-size:.88em}
+details summary{cursor:pointer}details pre{white-space:pre-wrap;font:inherit;margin:6px 0 0;color:var(--muted)}
+.muted{color:var(--muted);font-size:.85em}.empty{color:var(--muted);font-style:italic;font-size:.88em}
+.badge{display:inline-block;border-radius:99px;padding:0 8px;font-size:.75em;background:#e6f4ee;color:var(--brand-d)}
+.toast{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);background:#13201b;color:#fff;padding:10px 16px;border-radius:8px;opacity:0;transition:opacity .2s;pointer-events:none}
+.toast.show{opacity:1}
+@media (max-width:1100px){body{height:auto}.grid{grid-template-columns:1fr}.col{height:auto}iframe{height:640px;flex:none}.chat{max-height:520px}}
+</style>
+</head>
+<body>
+<header>
+  <b>SaniBot · Consola de demostración</b>
+  <span class="modo">WhatsApp: {{ "simulado en pantalla" if modo == "console" else "real (API de WhatsApp Cloud)" }}</span>
+  <span class="modo" id="activas">Búsquedas activas: –</span>
+  <span class="sp">Usuarios de prueba: paciente1, paciente2, paciente3 · contraseña sanitas123</span>
+</header>
+<div class="grid">
+  <section class="col" aria-labelledby="t-app">
+    <h2 id="t-app"><span class="num">1</span> App del paciente
+      <span class="act"><button class="ghost" type="button" id="reload-app">Recargar</button>
+      <button class="ghost" type="button" id="home-app">Inicio</button></span></h2>
+    <iframe id="app" src="/" title="App de SaniBot para el paciente"></iframe>
+  </section>
+
+  <section class="col" aria-labelledby="t-wa">
+    <h2 id="t-wa"><span class="num">2</span> WhatsApp del paciente</h2>
+    <div class="wa-top"><span>SaniBot ✔ · cuenta verificada de Sanitas</span>
+      <label class="sr" for="filtro" style="position:absolute;left:-999px">Ver chat de</label>
+      <select id="filtro"><option value="">Todos los números</option></select></div>
+    {% if modo != "console" %}
+    <div class="note">Los mensajes llegan a <b>tu celular real</b>: responde (Aceptar, Rechazar o BAJA) desde WhatsApp.
+      Aquí ves qué se envió y si Meta lo entregó o lo leyó.</div>
+    {% endif %}
+    <div class="chat" id="chat" aria-live="polite"><p class="empty">Todavía no hay mensajes. Empieza en la app del paciente (columna 1).</p></div>
+    {% if modo == "console" %}
+    <form class="compose" id="compose">
+      <input id="texto" aria-label="Escribir un mensaje a SaniBot" placeholder="Escribe un mensaje (por ejemplo BAJA)">
+      <button>Enviar</button>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="col" aria-labelledby="t-san">
+    <h2 id="t-san"><span class="num">3</span> Sanitas (simulada)
+      <span class="act"><a class="muted" href="{{ sanitas_url }}/portal" target="_blank" rel="noopener">Portal completo ↗</a></span></h2>
+    <div class="side">
+      <h3>Simulador de agenda</h3>
+      <div class="sim">
+        <span class="dot" id="sim-dot"></span><b id="sim-txt">Apagado</b>
+        <label for="tasa" class="muted">Eventos por hora</label><input id="tasa" type="number" min="1" max="3600" value="120">
+        <button type="button" id="sim-on">Encender</button><button type="button" class="ghost" id="sim-off">Apagar</button>
+        <button type="button" class="ghost" id="sim-step" title="Genera una cancelación, apertura o reserva ahora">Un evento ya</button>
+      </div>
+      <p class="muted">Genera cancelaciones de otros pacientes, nuevas agendas y reservas que compiten con SaniBot.</p>
+      <ul class="plain" id="sim-hist"></ul>
+      <h3>Citas de los pacientes de prueba</h3>
+      <div id="citas"><p class="empty">Cargando…</p></div>
+      <h3>Correos que envía Sanitas</h3>
+      <div id="correos"><p class="empty">Sin correos todavía.</p></div>
+    </div>
+  </section>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script>
+const CSRF = "{{ csrf }}", MODO = "{{ modo }}";
+const $ = s => document.querySelector(s);
+const ESTADOS = {ENVIADA: "enviado ✓", SENT: "enviado ✓", DELIVERED: "entregado ✓✓", READ: "leído ✓✓", FAILED: "no entregado ✗"};
+const respondidas = new Set();
+let ultimoTotal = -1, telefonos = [];
+
+function el(tag, props = {}, ...hijos) {
+  const n = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === "class") n.className = v; else if (k.startsWith("on")) n.addEventListener(k.slice(2), v);
+    else if (v !== false && v != null) n.setAttribute(k, v === true ? "" : v);
+  }
+  for (const h of hijos.flat()) if (h != null) n.append(h instanceof Node ? h : document.createTextNode(String(h)));
+  return n;
+}
+function toast(t) { const x = $("#toast"); x.textContent = t; x.classList.add("show"); setTimeout(() => x.classList.remove("show"), 2600); }
+async function post(url, datos) {
+  const r = await fetch(url, {method: "POST", body: new URLSearchParams({csrf: CSRF, ...datos})});
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
+  return r.json();
+}
+const fmt = iso => new Date(iso).toLocaleString("es-CO", {weekday: "short", day: "numeric", month: "short", hour: "numeric", minute: "2-digit"});
+
+function pintarChat(chat) {
+  const filtro = $("#filtro").value;
+  const nuevos = [...new Set(chat.map(m => m.to).filter(Boolean))];
+  if (nuevos.join() !== telefonos.join()) {
+    telefonos = nuevos;
+    const sel = $("#filtro"), actual = sel.value;
+    sel.replaceChildren(el("option", {value: ""}, "Todos los números"),
+      ...telefonos.map(t => el("option", {value: t}, "+" + t.slice(0, 2) + " ••• " + t.slice(-4))));
+    sel.value = actual;
+  }
+  const visibles = chat.filter(m => !filtro || m.to === filtro);
+  const caja = $("#chat");
+  const abajo = caja.scrollHeight - caja.scrollTop - caja.clientHeight < 40;
+  if (!visibles.length) { caja.replaceChildren(el("p", {class: "empty"}, "Todavía no hay mensajes. Empieza en la app del paciente (columna 1).")); return; }
+  caja.replaceChildren(...visibles.map(m => {
+    const meta = m.hora + (m.estado ? " · " + (ESTADOS[m.estado] || m.estado.toLowerCase()) : "");
+    const btns = m.botones.length ? el("div", {class: "btns"}, m.botones.map(b => el("button", {
+      type: "button", disabled: respondidas.has(m.id),
+      onclick: async ev => {
+        respondidas.add(m.id); ev.target.parentNode.querySelectorAll("button").forEach(x => x.disabled = true);
+        try { const r = await post("/demo/whatsapp", {telefono: m.to, boton: b.payload}); toast("Respuesta enviada: " + b.texto + " → " + (r.resultados[0] || "ok")); }
+        catch (e) { toast("No se pudo responder: " + e.message); }
+        actualizar(); setTimeout(() => $("#app").contentWindow.location.reload(), 600);
+      }}, b.texto))) : null;
+    return el("div", {class: m.propio ? "msg out" : "msg"}, (!m.propio && !filtro && telefonos.length > 1) ? el("span", {class: "to"}, "Para +" + m.to.slice(0, 2) + " ••• " + m.to.slice(-4)) : null,
+      m.texto, btns, m.error ? el("span", {class: "err"}, m.error) : null, el("span", {class: "meta"}, meta));
+  }));
+  if (abajo || ultimoTotal !== chat.length) caja.scrollTop = caja.scrollHeight;
+  ultimoTotal = chat.length;
+}
+
+function pintarSanitas(s) {
+  if (!s) { $("#citas").replaceChildren(el("p", {class: "empty"}, "La Sanitas simulada no responde (¿está corriendo en el puerto 8100?).")); return; }
+  const sim = s.simulador;
+  $("#sim-dot").classList.toggle("on", sim.activo);
+  $("#sim-txt").textContent = sim.activo ? `Encendido · ${sim.eventos} eventos` : `Apagado · ${sim.eventos} eventos`;
+  if (document.activeElement !== $("#tasa")) $("#tasa").value = sim.eventos_por_hora;
+  $("#sim-hist").replaceChildren(...sim.historial.slice(0, 6).map(h => el("li", {}, el("span", {class: "badge"}, h.hora), " ", h.texto)));
+  $("#citas").replaceChildren(...s.pacientes.map(p => el("div", {class: "muted", style: "margin:6px 0"},
+    el("b", {}, p.nombre), ` (${p.usuario}) `,
+    p.citas.length ? p.citas.map(c => el("div", {}, `• ${c.serviceType}: ${fmt(c.start)}`)) : el("div", {}, "• Sin citas"))));
+  $("#correos").replaceChildren(...(s.correos.length ? s.correos.slice(0, 10).map(c =>
+    el("details", {}, el("summary", {}, el("b", {}, c.asunto), " · " + c.para.split("@")[0] + " · " + new Date(c.fecha).toLocaleTimeString("es-CO")),
+      el("pre", {}, c.cuerpo))) : [el("p", {class: "empty"}, "Sin correos todavía.")]));
+}
+
+async function actualizar() {
+  try {
+    const r = await fetch("/demo/estado"); if (!r.ok) return;
+    const d = await r.json();
+    $("#activas").textContent = "Búsquedas activas: " + d.busquedas_activas;
+    pintarChat(d.chat); pintarSanitas(d.sanitas);
+  } catch (e) { /* el servidor se está reiniciando */ }
+}
+
+$("#filtro").addEventListener("change", () => { ultimoTotal = -1; actualizar(); });
+$("#reload-app").onclick = () => $("#app").contentWindow.location.reload();
+$("#home-app").onclick = () => { $("#app").src = "/"; };
+const sim = accion => post("/demo/simulador", {accion, eventos_por_hora: $("#tasa").value})
+  .then(() => { toast(accion === "iniciar" ? "Simulador encendido" : accion === "detener" ? "Simulador apagado" : "Evento generado"); actualizar(); })
+  .catch(e => toast(e.message));
+$("#sim-on").onclick = () => sim("iniciar");
+$("#sim-off").onclick = () => sim("detener");
+$("#sim-step").onclick = () => sim("paso");
+const compose = $("#compose");
+if (compose) compose.addEventListener("submit", async ev => {
+  ev.preventDefault();
+  const texto = $("#texto").value.trim(), tel = $("#filtro").value || telefonos[telefonos.length - 1];
+  if (!texto) return;
+  if (!tel) { toast("Primero verifica un número en la app del paciente."); return; }
+  try { const r = await post("/demo/whatsapp", {telefono: tel, texto}); toast("Mensaje enviado → " + (r.resultados[0] || "sin acción")); $("#texto").value = ""; }
+  catch (e) { toast(e.message); }
+  actualizar();
+});
+actualizar(); setInterval(actualizar, 2000);
+</script>
+</body>
+</html>

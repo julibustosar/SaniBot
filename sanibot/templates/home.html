@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% if whatsapp_ok and vigente and not solicitudes %}{% set paso = 4 %}{% endif %}
+{% block title %}Mis búsquedas{% endblock %}
+{% block band %}<h1>Hola{% if nombre %}, {{ nombre.split(' ')[0] }}{% endif %}</h1>
+<p>{% if solicitudes %}SaniBot está buscando por ti. Te escribiremos por WhatsApp cuando aparezca un cupo.{% else %}Elige la cita que quieres adelantar o pide una cita nueva.{% endif %}</p>{% endblock %}
+{% block content %}
+{% if not vigente %}<p class="error">Tu autorización con Sanitas no está vigente. <a href="/consentimiento">Vuelve a iniciar sesión en Sanitas</a>; tus búsquedas conservan su lugar.</p>{% endif %}
+{% if not whatsapp_ok %}<p class="error">Falta <a href="/whatsapp">verificar tu WhatsApp</a> para recibir las ofertas.</p>{% endif %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<h2>Tus citas en el centro médico {{ sede }}</h2>
+{% if citas %}
+<ul class="list">
+{% for c in citas %}
+  <li class="item">
+    <div class="t">{{ c.especialidad }}</div>
+    <div class="row">
+    {% if c.id in con_busqueda %}<span class="pill live">Buscando una fecha anterior</span>
+    {% elif whatsapp_ok and vigente %}<a class="button small" href="/solicitudes/nueva?cita_id={{ c.id }}">Adelantar esta cita</a>{% endif %}
+    </div>
+    <div class="d">{{ c.inicio|fecha }} a las {{ c.inicio|hora }} · {{ c.profesional }}</div>
+  </li>
+{% endfor %}
+</ul>
+{% else %}<p class="muted">No encontramos citas agendadas.</p>{% endif %}
+{% if whatsapp_ok and vigente %}<div class="actions"><a class="button secondary" href="/solicitudes/nueva">Necesito una cita nueva</a></div>{% endif %}
+<details><summary>Desvincular mi cuenta</summary>
+<form method="post" action="/cuenta/desvincular"><input type="hidden" name="csrf" value="{{ csrf }}">
+<p>SaniBot revocará su autorización en Sanitas y detendrá tus búsquedas. Tus citas actuales no cambian.</p>
+<button class="danger button small">Desvincular mi cuenta</button></form></details>
+{% endblock %}
+{% block aside %}
+<h2>Búsquedas activas</h2>
+{% if solicitudes %}
+<ul class="list">
+{% for s in solicitudes %}
+  <li class="item">
+    <div class="t">{{ s.especialidad }}</div>
+    <div class="row"><form method="post" action="/solicitudes/{{ s.id }}/cancelar" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">Detener</button></form></div>
+    <div class="d">{% if s.cita_actual_fecha %}Antes del {{ s.cita_actual_fecha|fecha }}{% else %}Cita nueva{% endif %}{% if s.franjas %}, en la {{ s.franjas|join(' o la ')|replace('manana','mañana') }}{% endif %}<br><span class="pill live">{{ estado_texto(s.estado.value) }}</span></div>
+  </li>
+{% endfor %}
+</ul>
+{% else %}
+<p>Todavía no tienes búsquedas. Elige una cita para empezar.</p>
+{% endif %}
+{% endblock %}

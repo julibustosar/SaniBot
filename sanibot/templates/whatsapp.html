@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% set paso = 3 %}
+{% block title %}Verificar WhatsApp{% endblock %}
+{% block band %}{% if paso_wa == "numero" %}<h1>Tu número de WhatsApp</h1><p>Es el único canal por el que SaniBot te escribirá.</p>{% else %}<h1>Escribe el código</h1><p>Te lo enviamos por WhatsApp al número terminado en {{ telefono_final }}.</p>{% endif %}{% endblock %}
+{% block content %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+{% if paso_wa == "numero" %}
+<form method="post" action="/whatsapp">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="telefono">Número de celular</label>
+  <input id="telefono" name="telefono" inputmode="tel" autocomplete="tel" placeholder="300 123 4567" required>
+  <label class="check"><input type="checkbox" name="acepto" value="si" required> Autorizo a SaniBot a escribirme por WhatsApp. Puedo escribir BAJA en cualquier momento para dejar de recibir mensajes.</label>
+  <div class="actions"><button>Enviar código</button></div>
+</form>
+{% else %}
+<form method="post" action="/whatsapp/verificar">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label for="codigo">Código de 6 dígitos</label>
+  <input id="codigo" class="code" name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required autofocus>
+  <div class="actions"><button>Verificar</button><a href="/whatsapp">Cambiar número o pedir otro código</a></div>
+</form>
+{% endif %}
+{% endblock %}
+{% block aside %}
+<h2>Cómo reconocer a SaniBot</h2>
+<p>Los mensajes llegan desde una cuenta verificada de WhatsApp llamada SaniBot, la que EPS Sanitas anunció.</p>
+<p>SaniBot nunca te enviará enlaces para iniciar sesión ni te pedirá contraseñas, pagos o datos clínicos.</p>
+{% endblock %}

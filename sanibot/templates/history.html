@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Historial{% endblock %}
+{% block content %}
+<h1>Historial de ofertas</h1>
+{% if ofertas %}
+<div class="table-wrap"><table><thead><tr><th scope="col">Oferta enviada</th><th scope="col">Especialidad</th><th scope="col">Cupo ofrecido</th><th scope="col">Resultado</th></tr></thead><tbody>
+{% for o in ofertas %}<tr><td>{{ o.creada|fecha }}, {{ o.creada|hora }}</td><td>{{ o.especialidad }}</td><td>{{ o.cupo|fecha }}, {{ o.cupo|hora }} ({{ o.sede }})</td><td>{{ estado_texto(o.estado) }}</td></tr>{% endfor %}
+</tbody></table></div>
+{% else %}<p>Aún no has recibido ofertas.</p>{% endif %}
+{% endblock %}

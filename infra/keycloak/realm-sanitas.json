@@ -1,0 +1,37 @@
+{
+  "realm": "sanitas",
+  "enabled": true,
+  "displayName": "EPS Sanitas (simulada)",
+  "accessTokenLifespan": 300,
+  "revokeRefreshToken": true,
+  "refreshTokenMaxReuse": 0,
+  "clientScopes": [
+    {"name": "citas.leer", "protocol": "openid-connect", "attributes": {"include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Consultar sus citas"}},
+    {"name": "citas.reprogramar", "protocol": "openid-connect", "attributes": {"include.in.token.scope": "true", "display.on.consent.screen": "true", "consent.screen.text": "Agendar, reprogramar y cancelar sus citas"}}
+  ],
+  "clients": [
+    {
+      "clientId": "sanibot",
+      "name": "SaniBot - servicio complementario autorizado",
+      "enabled": true,
+      "publicClient": false,
+      "secret": "sanibot-secret",
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": false,
+      "consentRequired": true,
+      "redirectUris": ["http://localhost:8000/auth/callback"],
+      "webOrigins": ["http://localhost:8000"],
+      "attributes": {"pkce.code.challenge.method": "S256"},
+      "defaultClientScopes": ["profile", "email"],
+      "optionalClientScopes": ["offline_access", "citas.leer", "citas.reprogramar"]
+    }
+  ],
+  "users": [
+    {"username": "paciente1", "enabled": true, "email": "ana.gomez@example.com", "emailVerified": true, "firstName": "Ana", "lastName": "Gómez",
+     "credentials": [{"type": "password", "value": "sanitas123", "temporary": false}]},
+    {"username": "paciente2", "enabled": true, "email": "luis.perez@example.com", "emailVerified": true, "firstName": "Luis", "lastName": "Pérez",
+     "credentials": [{"type": "password", "value": "sanitas123", "temporary": false}]},
+    {"username": "paciente3", "enabled": true, "email": "maria.rodriguez@example.com", "emailVerified": true, "firstName": "María", "lastName": "Rodríguez",
+     "credentials": [{"type": "password", "value": "sanitas123", "temporary": false}]}
+  ]
+}

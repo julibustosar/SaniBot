@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}{{ titulo }}{% endblock %}
+{% block band %}<h1>{{ titulo }}</h1>{% endblock %}
+{% block content %}
+<p>{{ texto }}</p>
+{% if enlace %}<div class="actions"><a class="button" href="{{ enlace[0] }}">{{ enlace[1] }}</a></div>{% endif %}
+{% endblock %}

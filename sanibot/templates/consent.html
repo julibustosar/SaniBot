@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% set paso = 1 %}
+{% block title %}Autorización de datos{% endblock %}
+{% block band %}<h1>Autorización de tratamiento de datos</h1><p>Antes de conectar tu cuenta, revisa qué datos usará SaniBot y para qué.</p>{% endblock %}
+{% block content %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<div class="note">{{ finalidad }}</div>
+<form method="post">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <label class="check"><input type="checkbox" name="acepto" value="si" required> He leído y acepto la autorización de tratamiento de datos.</label>
+  <div class="actions"><button>Continuar al inicio de sesión de Sanitas</button></div>
+</form>
+{% endblock %}
+{% block aside %}
+<h2>Qué pasa después</h2>
+<p>Irás a la página de inicio de sesión de Sanitas. Allí entras con tu usuario y autorizas a SaniBot a consultar y reprogramar tus citas.</p>
+<p>SaniBot nunca recibe tu contraseña y puedes retirar esta autorización cuando quieras.</p>
+{% endblock %}

@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% set paso = 4 %}
+{% block title %}Nueva búsqueda{% endblock %}
+{% block band %}<h1>{% if cita_id %}Adelantar tu cita{% else %}Pedir una cita nueva{% endif %}</h1><p>Dinos cuándo puedes ir y cómo quieres que SaniBot actúe cuando encuentre un cupo.</p>{% endblock %}
+{% block content %}
+{% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+<form method="post" action="/solicitudes/nueva">
+  <input type="hidden" name="csrf" value="{{ csrf }}">
+  <input type="hidden" name="cita_id" value="{{ cita_id }}">
+  {% if not cita_id %}
+  <label for="especialidad">Especialidad</label>
+  <select id="especialidad" name="especialidad" required>{% for e in especialidades %}<option>{{ e }}</option>{% endfor %}</select>
+  {% endif %}
+  <fieldset><legend>¿En qué horario puedes ir?</legend>
+    <div class="two">
+      <label class="choice"><input type="checkbox" name="manana" value="1"><span>Mañana<small>Antes de las 12 m.</small></span></label>
+      <label class="choice"><input type="checkbox" name="tarde" value="1"><span>Tarde<small>Desde las 12 m.</small></span></label>
+    </div>
+    <p class="muted">Si no marcas ninguno, te ofrecemos cualquier horario.</p>
+  </fieldset>
+  <fieldset><legend>Cuando aparezca un cupo</legend>
+    <div class="choices">
+      <label class="choice"><input type="radio" name="modo" value="CON_CONFIRMACION" checked><span>Pregúntame por WhatsApp<small>Recomendado. Respondes con Aceptar o Rechazar.</small></span></label>
+      <label class="choice"><input type="radio" name="modo" value="AUTOMATICO"><span>Cambia la cita por mí<small>SaniBot la reprograma y te avisa por WhatsApp.</small></span></label>
+    </div>
+  </fieldset>
+  <details><summary>Más opciones</summary>
+    <label for="anticipacion">Avísame con al menos</label>
+    <select id="anticipacion" name="anticipacion">
+      <option value="12">12 horas de anticipación</option><option value="24" selected>1 día de anticipación</option>
+      <option value="48">2 días de anticipación</option><option value="72">3 días de anticipación</option>
+    </select>
+    <label for="fecha_limite">Dejar de buscar el (opcional)</label>
+    <input id="fecha_limite" name="fecha_limite" type="date">
+  </details>
+  <div class="actions"><button>Activar búsqueda</button></div>
+</form>
+{% endblock %}
+{% block aside %}
+<h2>Así te llegará la oferta</h2>
+<div class="msg-preview" aria-label="Ejemplo del mensaje">
+  <div class="from">SaniBot · cuenta verificada</div>
+  <div class="bubble">¡Hay un cupo disponible antes de tu cita! Fecha, hora y sede. Tienes 30 minutos para responder.</div>
+  <div class="btns" aria-hidden="true"><span>Aceptar</span><span>Rechazar</span></div>
+</div>
+<p>Si no respondes a tiempo, tu cita actual se mantiene y seguimos buscando.</p>
+{% endblock %}

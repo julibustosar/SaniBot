@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0b2e59">
+<title>{% block title %}SaniBot{% endblock %} · SaniBot</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<a class="skip" href="#contenido">Saltar al contenido</a>
+<header class="site-head">
+  <div class="wrap">
+    <a class="brand" href="/">
+      <svg width="30" height="30" viewBox="0 0 30 30" aria-hidden="true"><rect width="30" height="30" rx="7" fill="#1458b8"/><path d="M12 7h6v5h5v6h-5v5h-6v-5H7v-6h5z" fill="#fff"/></svg>
+      SaniBot</a>
+    <span class="brand-note">Servicio complementario autorizado por EPS Sanitas<br>Centro médico {{ sede }}</span>
+    <nav class="site-nav" aria-label="Principal">
+      {% if logged %}
+      <a href="/inicio">Mis búsquedas</a>
+      <form method="post" action="/salir" class="inline"><input type="hidden" name="csrf" value="{{ csrf }}"><button class="link">Cerrar sesión</button></form>
+      {% else %}
+      <a href="/consentimiento">Activar SaniBot</a>
+      {% endif %}
+    </nav>
+  </div>
+</header>
+<main id="contenido">
+{% block page %}
+  {% set band_html = self.band() %}
+  {% if band_html|trim or paso %}
+  <section class="band"><div class="wrap">
+    {{ band_html }}
+    {% if paso %}
+    <ol class="steps" aria-label="Pasos para activar SaniBot">
+      {% for n, nombre in [(1, "Autorización de datos"), (2, "Inicio de sesión en Sanitas"), (3, "Verificación de WhatsApp"), (4, "Búsqueda")] %}
+      <li class="{{ 'done' if n < paso else ('now' if n == paso else '') }}"{% if n == paso %} aria-current="step"{% endif %}>{{ nombre }}</li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+  </div></section>
+  {% endif %}
+  {% set aside_html = self.aside() %}
+  <div class="wrap page">
+    <div class="{{ 'cols' if aside_html|trim else '' }}">
+      <div class="panel">{% block content %}{% endblock %}</div>
+      {% if aside_html|trim %}<aside class="aside">{{ aside_html }}</aside>{% endif %}
+    </div>
+  </div>
+{% endblock %}
+</main>
+<footer class="site-foot">
+  <div class="wrap">
+    <span>SaniBot nunca te pedirá contraseñas, pagos ni datos clínicos por WhatsApp.</span>
+    <span>Tus citas y los correos de confirmación siguen a cargo de EPS Sanitas.{% if dev_whatsapp %} · <a href="/dev/whatsapp">Simulador de WhatsApp (pruebas)</a>{% endif %}</span>
+  </div>
+</footer>
+{% if false %}{% block band %}{% endblock %}{% block aside %}{% endblock %}{% endif %}
+</body>
+</html>

@@ -1,0 +1,63 @@
+# Entorno local completo de SaniBot (MVP académico).
+#   docker compose up --build                     -> SaniBot + Sanitas simulada + correo + base de datos
+#   SIMULADOR=120 docker compose up               -> además, enciende el simulador de agenda (eventos por hora)
+#   docker compose --profile keycloak up          -> además, Keycloak como proveedor OAuth (ver README)
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: sanibot
+      POSTGRES_USER: sanibot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sanibot-local}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sanibot"]
+      interval: 5s
+      retries: 10
+
+  sanitas:
+    build: .
+    command: ["uvicorn", "mock_sanitas.app:app", "--host", "0.0.0.0", "--port", "8100"]
+    environment:
+      MOCK_REDIRECT_URIS: http://localhost:8000/auth/callback
+      MOCK_SANIBOT_WEBHOOK_URL: http://sanibot:8000/webhooks/sanitas
+      MOCK_WEBHOOK_SECRET: ${SANITAS_WEBHOOK_SECRET:-secreto-webhook-sanitas}
+      MOCK_SERVICE_KEY: ${SANITAS_SERVICE_KEY:-clave-servicio-sanibot}
+      MOCK_CLIENT_SECRET: ${OAUTH_CLIENT_SECRET:-sanibot-secret}
+      MOCK_SMTP_HOST: mailpit
+      MOCK_SMTP_PORT: "1025"
+      MOCK_SIMULADOR_EVENTOS_POR_HORA: ${SIMULADOR:-0}
+    ports: ["8100:8100"]
+
+  sanibot:
+    build: .
+    depends_on:
+      db: {condition: service_healthy}
+      sanitas: {condition: service_started}
+    env_file: [.env]
+    environment:
+      SANIBOT_DATABASE_URL: postgresql+psycopg://sanibot:${POSTGRES_PASSWORD:-sanibot-local}@db:5432/sanibot
+      SANIBOT_BASE_URL: http://localhost:8000
+      SANIBOT_OAUTH_AUTHORIZE_URL: http://localhost:8100/oauth/authorize
+      SANIBOT_OAUTH_TOKEN_URL: http://sanitas:8100/oauth/token
+      SANIBOT_OAUTH_USERINFO_URL: http://sanitas:8100/oauth/userinfo
+      SANIBOT_OAUTH_REVOKE_URL: http://sanitas:8100/oauth/revoke
+      SANIBOT_SANITAS_API_URL: http://sanitas:8100/fhir
+    ports: ["8000:8000"]
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports: ["8025:8025"]
+
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    profiles: [keycloak]
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin-local}
+    volumes: ["./infra/keycloak:/opt/keycloak/data/import:ro"]
+    ports: ["8080:8080"]
+
+volumes:
+  pgdata:
