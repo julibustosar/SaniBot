@@ -16,7 +16,10 @@ from mock_sanitas.app import MockConfig  # noqa: E402
 from mock_sanitas.app import create_app as create_mock  # noqa: E402
 from mock_sanitas.state import Appointment, SanitasState  # noqa: E402
 from sanibot.config import Settings  # noqa: E402
-from sanibot.integrations.whatsapp import ConsoleWhatsApp  # noqa: E402
+from sanibot.integrations.whatsapp import (
+    ConsoleWhatsApp,  # noqa: E402
+    normalize_phone,
+)
 from sanibot.main import build_context, create_app  # noqa: E402
 from sanibot.models import Paciente  # noqa: E402
 from sanibot.security.signatures import sign  # noqa: E402
@@ -108,11 +111,12 @@ class Harness:
         page = b.get("/whatsapp")
         r = b.post("/whatsapp", data={"csrf": self.csrf(page.text), "telefono": phone, "acepto": "si"})
         assert r.status_code == 200, r.text
-        msg = self.wa.outbox[-1]
-        assert msg.template == "sanibot_verificacion"
-        r = b.post("/whatsapp/verificar", data={"csrf": self.csrf(r.text), "codigo": msg.params[0]},
-                   follow_redirects=False)
-        assert r.status_code == 303, r.text
+        mensaje = re.search(r"SANIBOT \d{6}", r.text).group(0)
+        # El paciente envía el código a SaniBot desde su WhatsApp (llega por el webhook).
+        msg = {"from": normalize_phone(phone), "id": "wamid.in", "type": "text", "text": {"body": mensaje}}
+        res = self.client.post("/webhooks/whatsapp", json={"entry": [{"changes": [{"value": {"messages": [msg]}}]}]})
+        assert res.json()["resultados"] == ["VERIFICADO"], res.text
+        assert b.get("/whatsapp/estado").json() == {"verificado": True}
 
     def paciente_id(self, username) -> str:
         sub = self.state.patients[username].sub

@@ -36,19 +36,16 @@ class Settings(BaseSettings):
     sanitas_timeout_seconds: float = 10.0
 
     # WhatsApp (RNF13: único canal, bot verificado provisto por Sanitas)
-    whatsapp_mode: str = "console"  # "console" (simulador local) o "cloud" (API de WhatsApp Cloud)
+    whatsapp_mode: str = "cloud"  # API de WhatsApp Cloud de Meta (las pruebas automáticas usan un doble en memoria)
     whatsapp_api_url: str = "https://graph.facebook.com"
     whatsapp_api_version: str = "v25.0"
     whatsapp_phone_number_id: str = ""
     whatsapp_business_account_id: str = ""  # WABA: solo para registrar y consultar plantillas
+    whatsapp_numero_visible: str = ""  # número del bot con indicativo (p. ej. 15551234567), para el enlace wa.me
     whatsapp_access_token: str = ""
     whatsapp_app_secret: str = ""
     whatsapp_verify_token: str = "sanibot-verify-token"
     whatsapp_template_language: str = "es"
-
-    # Consola de demostración (/demo). Se habilita sola en localhost; nunca en producción.
-    demo_enabled: bool | None = None
-    demo_sanitas_url: str = ""  # por defecto se deriva de sanitas_api_url (sin /fhir)
 
     # Reglas de negocio
     offer_window_minutes: int = 30
@@ -59,14 +56,6 @@ class Settings(BaseSettings):
     @property
     def is_local(self) -> bool:
         return any(h in self.base_url for h in ("localhost", "127.0.0.1", "testserver"))
-
-    @property
-    def demo_active(self) -> bool:
-        return self.is_local if self.demo_enabled is None else (self.demo_enabled and self.is_local)
-
-    @property
-    def sanitas_portal_url(self) -> str:
-        return (self.demo_sanitas_url or self.sanitas_api_url.removesuffix("/fhir")).rstrip("/")
 
     def check_production(self) -> None:
         """Impide arrancar fuera de localhost con los secretos de desarrollo (riesgos 9 y 39)."""

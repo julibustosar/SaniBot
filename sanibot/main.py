@@ -9,11 +9,11 @@ import httpx
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from sanibot.api import admin, demo, web, webhooks
+from sanibot.api import admin, web, webhooks
 from sanibot.config import Settings, get_settings
 from sanibot.db import Database
 from sanibot.integrations.sanitas import SanitasClient
-from sanibot.integrations.whatsapp import CloudWhatsApp, ConsoleWhatsApp, WhatsAppClient
+from sanibot.integrations.whatsapp import CloudWhatsApp, WhatsAppClient
 from sanibot.security.crypto import TokenCipher
 from sanibot.security.sessions import SessionManager
 from sanibot.services import worker
@@ -28,7 +28,7 @@ BASE = Path(__file__).parent
 def build_context(settings: Settings, sanitas_http: httpx.Client | None = None,
                   whatsapp: WhatsAppClient | None = None) -> AppContext:
     if whatsapp is None:
-        whatsapp = CloudWhatsApp(settings) if settings.whatsapp_mode == "cloud" else ConsoleWhatsApp()
+        whatsapp = CloudWhatsApp(settings)
     return AppContext(settings=settings, db=Database(settings.database_url),
                       sanitas=SanitasClient(settings, sanitas_http), whatsapp=whatsapp,
                       cipher=TokenCipher(settings.token_encryption_keys))
@@ -49,9 +49,7 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
                     await asyncio.sleep(settings.worker_interval_seconds)
                     await asyncio.to_thread(worker.tick, ctx)
             task = asyncio.create_task(loop())
-        log.info("SaniBot iniciado (WhatsApp: %s, sede: %s)", settings.whatsapp_mode, settings.sede)
-        if settings.demo_active:
-            log.info("Consola de demostración: %s/demo", settings.base_url)
+        log.info("SaniBot iniciado (sede: %s): %s", settings.sede, settings.base_url)
         yield
         if task:
             task.cancel()
@@ -64,7 +62,6 @@ def create_app(settings: Settings | None = None, ctx: AppContext | None = None) 
     app.include_router(web.router)
     app.include_router(webhooks.router)
     app.include_router(admin.router)
-    app.include_router(demo.router)
     return app
 
 

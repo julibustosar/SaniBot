@@ -1,8 +1,7 @@
-"""Arranca todo el entorno de demostración de SaniBot con un solo comando (Windows, macOS y Linux).
+"""Arranca SaniBot con un solo comando (Windows, macOS y Linux).
 
-    python iniciar.py                    # arranca SaniBot y abre la página del paciente
-    python iniciar.py --tunel            # además abre el túnel para el webhook de WhatsApp (WhatsApp real)
-    python iniciar.py --consola          # abre la consola de demostración (/demo) en lugar de la página del paciente
+    python iniciar.py                    # SaniBot + Sanitas simulada + túnel para el webhook de WhatsApp
+    python iniciar.py --detener          # detiene todo si quedó corriendo
     python iniciar.py --simulador 0      # sin cancelaciones automáticas (por defecto: 120 por hora, en segundo plano)
 
 Lee el archivo .env (si no existe, lo crea a partir de .env.example y genera la llave de cifrado).
@@ -139,25 +138,86 @@ def abrir_tunel(procesos: list) -> str | None:
     return None
 
 
+def pids_en_puerto(puerto: int) -> set[int]:
+    """Procesos que escuchan en un puerto local (Windows: netstat; macOS y Linux: lsof)."""
+    try:
+        if os.name == "nt":
+            salida = subprocess.run(["netstat", "-ano", "-p", "TCP"], capture_output=True, text=True,  # noqa: S603,S607
+                                    check=False).stdout
+            return {int(c[-1]) for c in (linea.split() for linea in salida.splitlines())
+                    if len(c) >= 5 and c[1].endswith(f":{puerto}") and c[2] in ("0.0.0.0:0", "[::]:0")
+                    and c[-1].isdigit()}  # dirección remota vacía = en escucha (el estado varía según el idioma)
+        salida = subprocess.run(["lsof", "-t", f"-iTCP:{puerto}", "-sTCP:LISTEN"], capture_output=True,  # noqa: S603,S607
+                                text=True, check=False).stdout
+        return {int(x) for x in salida.split() if x.isdigit()}
+    except OSError:
+        return set()
+
+
+def detener() -> int:
+    encontrados = {pid for puerto in (PUERTO_SANIBOT, PUERTO_SANITAS) for pid in pids_en_puerto(puerto)}
+    encontrados.discard(os.getpid())
+    if not encontrados:
+        print("· No había nada corriendo en los puertos 8000 y 8100.")
+        return 0
+    for pid in encontrados:
+        if os.name == "nt":
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, check=False)  # noqa: S603,S607
+        else:
+            try:
+                os.kill(pid, 15)
+            except OSError:
+                pass
+    time.sleep(1)
+    quedan = [p for p in (PUERTO_SANIBOT, PUERTO_SANITAS) if puerto_ocupado(p)]
+    print("· SaniBot detenido." if not quedan else f"! Siguen ocupados los puertos {quedan}.")
+    return 0 if not quedan else 1
+
+
+def revisar_config(env: dict[str, str]) -> bool:
+    """Detecta errores frecuentes del .env antes de arrancar."""
+    problemas = []
+    pnid = env.get("SANIBOT_WHATSAPP_PHONE_NUMBER_ID", "")
+    if not pnid:
+        problemas.append("Falta SANIBOT_WHATSAPP_PHONE_NUMBER_ID (Meta: WhatsApp > Configuración de la API).")
+    elif pnid.startswith("1555") or len(pnid) < 14:
+        problemas.append("SANIBOT_WHATSAPP_PHONE_NUMBER_ID parece un número de teléfono. Va el «Identificador del número"
+                         " de teléfono» (unos 15-16 dígitos); el teléfono va en SANIBOT_WHATSAPP_NUMERO_VISIBLE.")
+    if not env.get("SANIBOT_WHATSAPP_ACCESS_TOKEN"):
+        problemas.append("Falta SANIBOT_WHATSAPP_ACCESS_TOKEN.")
+    if not env.get("SANIBOT_WHATSAPP_APP_SECRET"):
+        problemas.append("Falta SANIBOT_WHATSAPP_APP_SECRET.")
+    if not env.get("SANIBOT_WHATSAPP_NUMERO_VISIBLE"):
+        problemas.append("Falta SANIBOT_WHATSAPP_NUMERO_VISIBLE: el número de prueba de Meta (campo «De»), solo dígitos,"
+                         " por ejemplo 15551682297.")
+    for p in problemas:
+        print(f"! {p}")
+    return not problemas
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--simulador", type=float, default=120, metavar="EVENTOS_POR_HORA",
                     help="cancelaciones y aperturas simuladas por hora, en segundo plano (0 = apagado)")
-    ap.add_argument("--consola", action="store_true", help="abrir la consola de demostración (/demo)")
-    ap.add_argument("--tunel", action="store_true", help="abre un túnel público para el webhook de WhatsApp")
+    ap.add_argument("--sin-tunel", action="store_true", help="no abrir el túnel (WhatsApp no podrá avisar a SaniBot)")
+    ap.add_argument("--tunel", action="store_true", help=argparse.SUPPRESS)  # el túnel ya es lo normal
     ap.add_argument("--sin-navegador", action="store_true", help="no abrir el navegador")
+    ap.add_argument("--detener", action="store_true", help="detiene SaniBot y la Sanitas simulada si quedaron corriendo")
     args = ap.parse_args()
+    if args.detener:
+        return detener()
     os.chdir(RAIZ)
 
     for puerto in (PUERTO_SANIBOT, PUERTO_SANITAS):
         if puerto_ocupado(puerto):
-            print(f"! El puerto {puerto} ya está en uso. Cierra la otra terminal donde corre SaniBot o la Sanitas "
-                  "simulada (Ctrl+C) y vuelve a intentarlo.")
+            print(f"! El puerto {puerto} ya está en uso: SaniBot sigue corriendo de una vez anterior.\n"
+                  "  Ejecuta «python iniciar.py --detener» y vuelve a intentarlo.")
             return 1
 
     datos = asegurar_env()
     env = entorno(datos, args.simulador)
-    modo = env.get("SANIBOT_WHATSAPP_MODE", "console")
+    if not revisar_config(env):
+        return 1
     py = sys.executable
     procesos: list[subprocess.Popen] = []
     try:
@@ -170,19 +230,20 @@ def main() -> int:
         if not ok or any(p.poll() is not None for p in procesos):
             print("! No arrancaron los servidores. Revisa los mensajes de error de arriba.")
             return 1
-        tunel = abrir_tunel(procesos) if args.tunel else None
-        demo = f"http://localhost:{PUERTO_SANIBOT}" + ("/demo" if args.consola else "/")
+        tunel = None if args.sin_tunel else abrir_tunel(procesos)
+        demo = f"http://localhost:{PUERTO_SANIBOT}/"
         print("\n" + "=" * 68)
         print(f"  SaniBot listo.  Abre: {demo}")
-        print(f"  WhatsApp: {'simulado en pantalla' if modo == 'console' else 'real (API de WhatsApp Cloud)'}"
+        print(f"  WhatsApp de SaniBot: +{env.get('SANIBOT_WHATSAPP_NUMERO_VISIBLE', '')}"
               f"   ·   Cancelaciones simuladas: {f'{args.simulador:g} por hora' if args.simulador else 'apagadas'}")
         if tunel:
-            print(f"  Túnel: {tunel}\n  URL del webhook para Meta: {tunel}/webhooks/whatsapp")
-            print("  Token de verificación: el valor de SANIBOT_WHATSAPP_VERIFY_TOKEN del .env")
-        elif modo == "cloud":
-            print("  Modo cloud sin túnel: los botones de WhatsApp no llegarán a SaniBot. Usa --tunel.")
+            print("\n  >> Pega esta URL en Meta (WhatsApp > Configuración > Webhook > Editar):")
+            print(f"     {tunel}/webhooks/whatsapp")
+            print(f"     Token de verificación: {env.get('SANIBOT_WHATSAPP_VERIFY_TOKEN', 'sanibot-verify-token')}\n")
+        else:
+            print("  ! Sin túnel: WhatsApp no podrá enviarle a SaniBot tus mensajes ni tus respuestas.")
         print("  Usuarios de prueba: paciente1, paciente2, paciente3 · contraseña sanitas123")
-        print("  Ctrl+C para detener todo.")
+        print("  Para detener: Ctrl+C aquí, o en otra terminal «python iniciar.py --detener».")
         print("=" * 68 + "\n")
         if not args.sin_navegador:
             webbrowser.open(demo)

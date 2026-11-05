@@ -4,7 +4,7 @@ Los mensajes que inicia SaniBot usan plantillas aprobadas por la plataforma (cat
 desde la cuenta verificada que provee Sanitas. Ningún mensaje incluye la especialidad, datos clínicos ni enlaces
 de inicio de sesión (RNF05 / riesgos 11 y 13).
 
-Las plantillas se definen una sola vez en PLANTILLAS: de ahí salen la vista previa del modo consola y la
+Las plantillas se definen una sola vez en PLANTILLAS: de ahí salen el texto de respaldo (mensaje de sesión) y la
 solicitud de registro ante Meta (python -m sanibot.plantillas registrar).
 """
 
@@ -35,6 +35,10 @@ ERRORES_CONOCIDOS = {
     10: "La aplicación de Meta no tiene permiso para enviar mensajes con este número.",
     100: "Meta rechazó la solicitud por un parámetro inválido (revisa el Phone Number ID del .env).",
 }
+
+
+# Plantilla inexistente, no aprobada o con parámetros distintos a los registrados.
+PLANTILLA_NO_DISPONIBLE = {132001, 132000, 132012, 132015, 132016}
 
 
 class WhatsAppError(Exception):
@@ -80,10 +84,6 @@ class Plantilla:
 
 
 PLANTILLAS: dict[str, Plantilla] = {p.nombre: p for p in (
-    Plantilla("sanibot_verificacion", "AUTHENTICATION",
-              # Texto que Meta genera para las plantillas de autenticación en español (no es editable).
-              "{{1}} es tu código de verificación. Por tu seguridad, no lo compartas.",
-              pie="Este código caduca en 10 minutos."),
     Plantilla("sanibot_bienvenida", "UTILITY",
               "Hola {{1}}, soy SaniBot, el bot complementario y autorizado de EPS Sanitas. Te avisaré por aquí "
               "cuando encuentre una cita más pronta. Nunca te pediré contraseñas ni pagos. Escribe BAJA si no "
@@ -137,11 +137,11 @@ class WhatsAppClient:
 
 
 class ConsoleWhatsApp(WhatsAppClient):
-    """Modo local: guarda los mensajes en memoria para verlos en el simulador web (/dev/whatsapp)."""
+    """Doble de pruebas: guarda los mensajes en memoria. Solo lo usan las pruebas automáticas."""
 
     def __init__(self):
         self.outbox: list[OutgoingMessage] = []
-        self.inbox: list[dict] = []  # respuestas del paciente simuladas (para mostrarlas en la consola de demo)
+        self.inbox: list[dict] = []  # respuestas simuladas en las pruebas
         self.fail_next: bool | int = False  # True o un código de error de Meta para simular fallos
 
     def send_template(self, to, template, params, buttons=None):
@@ -175,16 +175,34 @@ class CloudWhatsApp(WhatsAppClient):
         components: list[dict] = []
         if params:
             components.append({"type": "body", "parameters": [{"type": "text", "text": p} for p in params]})
-        if template == "sanibot_verificacion" and params:
-            # Las plantillas de autenticación llevan el código también en el botón de copiar.
-            components.append({"type": "button", "sub_type": "url", "index": "0",
-                               "parameters": [{"type": "text", "text": params[0]}]})
         for i, (_, payload) in enumerate(buttons or []):
             components.append({"type": "button", "sub_type": "quick_reply", "index": str(i),
                                "parameters": [{"type": "payload", "payload": payload}]})
         body = {"messaging_product": "whatsapp", "to": to, "type": "template",
                 "template": {"name": template, "language": {"code": self.s.whatsapp_template_language},
                              "components": components}}
+        try:
+            return self._post(body, template)
+        except WhatsAppError as exc:
+            if exc.code not in PLANTILLA_NO_DISPONIBLE or template not in PLANTILLAS:
+                raise
+            # La plantilla aún no está aprobada. Si el paciente escribió en las últimas 24 horas (por ejemplo, al
+            # verificar su número), WhatsApp permite responderle con un mensaje normal con botones.
+            log.info("Plantilla %s no disponible (código %s): se envía como mensaje de sesión", template, exc.code)
+            return self.send_session(to, PLANTILLAS[template].preview(params), buttons)
+
+    def send_session(self, to, text, buttons=None):
+        """Mensaje dentro de la ventana de 24 horas: texto o botones de respuesta, sin plantilla."""
+        if buttons:
+            body = {"messaging_product": "whatsapp", "to": to, "type": "interactive",
+                    "interactive": {"type": "button", "body": {"text": text[:1024]},
+                                    "action": {"buttons": [{"type": "reply", "reply": {"id": payload, "title": label[:20]}}
+                                                           for label, payload in buttons[:3]]}}}
+        else:
+            body = {"messaging_product": "whatsapp", "to": to, "type": "text", "text": {"body": text[:4096]}}
+        return self._post(body, "mensaje de sesión")
+
+    def _post(self, body: dict, descripcion: str) -> str:
         url = f"{self.s.whatsapp_api_url}/{self.s.whatsapp_api_version}/{self.s.whatsapp_phone_number_id}/messages"
         try:
             r = self.http.post(url, json=body, headers={"Authorization": f"Bearer {self.s.whatsapp_access_token}"})
@@ -193,7 +211,7 @@ class CloudWhatsApp(WhatsAppClient):
                                 "Revisa tu conexión a internet e intenta de nuevo.") from exc
         if r.status_code >= 400:
             exc = error_from_response(r)
-            log.warning("Envío de %s falló: %s", template, exc)
+            log.warning("Envío de %s falló: %s", descripcion, exc)
             raise exc
         return r.json()["messages"][0]["id"]
 

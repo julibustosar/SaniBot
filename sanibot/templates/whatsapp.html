@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% set paso = 3 %}
 {% block title %}Verificar WhatsApp{% endblock %}
-{% block band %}{% if paso_wa == "numero" %}<h1>Tu número de WhatsApp</h1><p>Es el único canal por el que SaniBot te escribirá.</p>{% else %}<h1>Escribe el código</h1><p>Te lo enviamos por WhatsApp al número terminado en {{ telefono_final }}.</p>{% endif %}{% endblock %}
+{% block band %}{% if paso_wa == "numero" %}<h1>Tu número de WhatsApp</h1><p>Es el único canal por el que SaniBot te escribirá.</p>{% else %}<h1>Envía tu código a SaniBot</h1><p>Así confirmamos que el número terminado en {{ telefono_final }} es tuyo.</p>{% endif %}{% endblock %}
 {% block content %}
 {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
 {% if paso_wa == "numero" %}
@@ -10,19 +10,33 @@
   <label for="telefono">Número de celular</label>
   <input id="telefono" name="telefono" inputmode="tel" autocomplete="tel" placeholder="300 123 4567" required>
   <label class="check"><input type="checkbox" name="acepto" value="si" required> Autorizo a SaniBot a escribirme por WhatsApp. Puedo escribir BAJA en cualquier momento para dejar de recibir mensajes.</label>
-  <div class="actions"><button>Enviar código</button></div>
+  <div class="actions"><button>Continuar</button></div>
 </form>
 {% else %}
-<form method="post" action="/whatsapp/verificar">
-  <input type="hidden" name="csrf" value="{{ csrf }}">
-  <label for="codigo">Código de 6 dígitos</label>
-  <input id="codigo" class="code" name="codigo" inputmode="numeric" autocomplete="one-time-code" maxlength="6" required>
-  <div class="actions"><button>Verificar</button><a href="/whatsapp">Cambiar número o pedir otro código</a></div>
-</form>
+<p>Desde el WhatsApp del número terminado en <strong>{{ telefono_final }}</strong>, envía este mensaje a SaniBot:</p>
+<p class="codigo-envio" aria-label="Mensaje que debes enviar">{{ mensaje }}</p>
+{% if enlace_wa %}
+<div class="actions"><a class="button" href="{{ enlace_wa }}" target="_blank" rel="noopener">Abrir WhatsApp con el mensaje listo</a></div>
+<p class="muted">Si estás en el computador, también puedes escribirlo a mano al número +{{ numero_bot }}.</p>
+{% else %}
+<p class="error">Falta configurar el número de SaniBot (SANIBOT_WHATSAPP_NUMERO_VISIBLE en el archivo .env).</p>
+{% endif %}
+<p class="espera" id="espera" role="status">Esperando tu mensaje… Esta página avanza sola cuando llegue. El código vence en {{ minutos }} minutos.</p>
+<p><a href="/whatsapp">Cambiar número o generar otro código</a></p>
+<script>
+(function () {
+  const t = setInterval(async () => {
+    try {
+      const r = await fetch("/whatsapp/estado", {cache: "no-store"});
+      if (r.ok && (await r.json()).verificado) { clearInterval(t); location.href = "/inicio"; }
+    } catch (e) { /* se reintenta */ }
+  }, 3000);
+})();
+</script>
 {% endif %}
 {% endblock %}
 {% block aside %}
-<h2>Cómo reconocer a SaniBot</h2>
-<p>Los mensajes llegan desde una cuenta verificada de WhatsApp llamada SaniBot, la que EPS Sanitas anunció.</p>
+<h2>Por qué te pedimos escribir primero</h2>
+<p>Cuando tú escribes a SaniBot, WhatsApp confirma que el número es tuyo y nadie más puede vincularlo a tu cuenta.</p>
 <p>SaniBot nunca te enviará enlaces para iniciar sesión ni te pedirá contraseñas, pagos o datos clínicos.</p>
 {% endblock %}

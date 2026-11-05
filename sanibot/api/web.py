@@ -1,7 +1,8 @@
-"""Aplicación web de SaniBot (vinculación, WhatsApp, solicitudes, historial) y simulador de WhatsApp en modo consola."""
+"""Aplicación web de SaniBot (vinculación, WhatsApp, solicitudes, historial)."""
 
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
@@ -10,7 +11,6 @@ from sqlalchemy import select
 
 from sanibot import timeutil
 from sanibot.integrations.sanitas import SanitasError
-from sanibot.integrations.whatsapp import ConsoleWhatsApp, WhatsAppError
 from sanibot.models import (
     EstadoVinculo,
     ModoReasignacion,
@@ -24,7 +24,6 @@ from sanibot.services import accounts, requests_service
 from sanibot.services.context import ESPECIALIDADES, AppContext
 
 from .deps import get_ctx
-from .webhooks import handle_whatsapp_payload
 
 router = APIRouter(include_in_schema=False)
 templates = Jinja2Templates(directory=Path(__file__).parent.parent / "templates")
@@ -49,8 +48,6 @@ def _render(request: Request, name: str, status: int = 200, **ctx_vars) -> Respo
     csrf = ensure_csrf(sess)
     ctx: AppContext = request.app.state.ctx
     resp = templates.TemplateResponse(request, name, {"csrf": csrf, "sede": ctx.settings.sede,
-                                                     "dev_whatsapp": ctx.settings.whatsapp_mode == "console",
-                                                     "demo": ctx.settings.demo_active,
                                                      "logged": bool(sess.get("paciente_id")), **ctx_vars},
                                       status_code=status)
     request.app.state.sessions.save(resp, sess)
@@ -133,25 +130,20 @@ def whatsapp_submit(request: Request, csrf: str = Form(...), telefono: str = For
     _csrf(request, csrf)
     pid = _paciente_id(request)
     try:
-        phone = accounts.start_whatsapp_verification(ctx, pid, telefono, acepto == "si")
+        phone, code = accounts.start_whatsapp_verification(ctx, pid, telefono, acepto == "si")
     except (accounts.AccountError, ValueError) as exc:
         return _render(request, "whatsapp.html", 400, paso_wa="numero", error=str(exc))
-    except WhatsAppError as exc:
-        return _render(request, "whatsapp.html", 502, paso_wa="numero", error=exc.user_message)
-    return _render(request, "whatsapp.html", paso_wa="codigo", telefono_final=phone[-4:],
-                   modo_cloud=ctx.settings.whatsapp_mode == "cloud")
+    mensaje = f"SANIBOT {code}"
+    numero = "".join(ch for ch in ctx.settings.whatsapp_numero_visible if ch.isdigit())
+    enlace = f"https://wa.me/{numero}?text={quote(mensaje)}" if numero else None
+    return _render(request, "whatsapp.html", paso_wa="codigo", telefono=phone, telefono_final=phone[-4:],
+                   mensaje=mensaje, enlace_wa=enlace, numero_bot=numero, minutos=ctx.settings.verification_code_minutes)
 
 
-@router.post("/whatsapp/verificar")
-def whatsapp_verify(request: Request, csrf: str = Form(...), codigo: str = Form(...),
-                    ctx: AppContext = Depends(get_ctx)):
-    _csrf(request, csrf)
-    pid = _paciente_id(request)
-    try:
-        accounts.confirm_whatsapp(ctx, pid, codigo)
-    except accounts.AccountError as exc:
-        return _render(request, "whatsapp.html", 400, paso_wa="codigo", error=str(exc))
-    return _redirect(request, "/inicio")
+@router.get("/whatsapp/estado")
+def whatsapp_status(request: Request, ctx: AppContext = Depends(get_ctx)):
+    """La página de verificación lo consulta cada pocos segundos hasta que llega el mensaje del paciente."""
+    return {"verificado": accounts.whatsapp_verified(ctx, _paciente_id(request))}
 
 
 # ------------------------------------------------------------------ panel del paciente
@@ -177,9 +169,10 @@ def home(request: Request, ctx: AppContext = Depends(get_ctx)):
 
 
 @router.get("/solicitudes/nueva", response_class=HTMLResponse)
-def new_request_form(request: Request, cita_id: str = ""):
+def new_request_form(request: Request, cita_id: str = "", ctx: AppContext = Depends(get_ctx)):
     _paciente_id(request)
-    return _render(request, "request_form.html", cita_id=cita_id, especialidades=ESPECIALIDADES)
+    return _render(request, "request_form.html", cita_id=cita_id, especialidades=ESPECIALIDADES,
+                   minutos=ctx.settings.offer_window_minutes)
 
 
 @router.post("/solicitudes/nueva")
@@ -242,28 +235,3 @@ def logout(request: Request, csrf: str = Form(...)):
     request.state.sess = {}
     return _redirect(request, "/")
 
-
-# ------------------------------------------------------------------ simulador de WhatsApp (solo modo consola)
-def _console(ctx: AppContext) -> ConsoleWhatsApp:
-    if not isinstance(ctx.whatsapp, ConsoleWhatsApp):
-        raise HTTPException(404)
-    return ctx.whatsapp
-
-
-@router.get("/dev/whatsapp", response_class=HTMLResponse)
-def dev_whatsapp(request: Request, ctx: AppContext = Depends(get_ctx)):
-    wa = _console(ctx)
-    msgs = list(reversed(wa.outbox[-40:]))
-    return _render(request, "dev_whatsapp.html", mensajes=msgs, ahora=timeutil.now(), delta=timedelta)
-
-
-@router.post("/dev/whatsapp/responder")
-def dev_whatsapp_reply(request: Request, csrf: str = Form(...), telefono: str = Form(...), boton: str = Form(""),
-                       texto: str = Form(""), ctx: AppContext = Depends(get_ctx)):
-    _csrf(request, csrf)
-    _console(ctx)
-    msg = ({"from": telefono, "id": "dev", "type": "button", "button": {"payload": boton, "text": boton}} if boton
-           else {"from": telefono, "id": "dev", "type": "text", "text": {"body": texto}})
-    ctx.whatsapp.record_reply(telefono, boton.split(":")[0].capitalize() if boton else texto)
-    handle_whatsapp_payload(ctx, {"entry": [{"changes": [{"value": {"messages": [msg]}}]}]})
-    return _redirect(request, "/dev/whatsapp")

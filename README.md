@@ -15,10 +15,10 @@ a sistemas reales de Sanitas.
 | `sanibot/` | Backend FastAPI y aplicación web de SaniBot. |
 | `mock_sanitas/` | Sanitas simulada: proveedor OAuth 2.0 con PKCE, API de agendas tipo FHIR (`Slot`, `Appointment`), portal y **correos de confirmación y cancelación**, que Sanitas envía por su cuenta, por fuera de SaniBot. |
 | `simulator/` | Simulador de agenda integrado en la Sanitas simulada: cancelaciones de otros pacientes, nuevas agendas y reservas que compiten con SaniBot (llegadas tipo Poisson, parámetros calibrables). |
-| `iniciar.py` | Arranca todo con un solo comando y abre la **consola de demostración** (`/demo`). |
+| `iniciar.py` | Arranca SaniBot, la Sanitas simulada y el túnel para WhatsApp con un solo comando. |
 | `sanibot/plantillas.py` | Registra y consulta en Meta las plantillas de WhatsApp de SaniBot. |
 | `docs/GUIA_WHATSAPP_REAL.md` | Paso a paso para probar con WhatsApp real. |
-| `tests/` | 63 pruebas automatizadas: flujo extremo a extremo, controles de la matriz de riesgos, plantillas de WhatsApp y consola de demostración. |
+| `tests/` | 67 pruebas automatizadas: flujo extremo a extremo, controles de la matriz de riesgos y plantillas de WhatsApp. |
 | `docker-compose.yml` | SaniBot + Sanitas simulada + PostgreSQL + Mailpit (correo) + simulador y Keycloak opcionales. |
 | `.github/` | CI (ruff, pytest con cobertura mínima de 80 %, SonarQube Cloud, pip-audit) y Dependabot. |
 
@@ -38,14 +38,13 @@ Desde entonces, cada vez:
 
 ```bash
 source .venv/Scripts/activate
-python iniciar.py                    # página del paciente; --consola abre la consola de demostración
+python iniciar.py
 ```
 
-`iniciar.py` crea el `.env` si no existe (y genera la llave de cifrado), arranca la Sanitas simulada y SaniBot con
-cancelaciones simuladas en segundo plano (120 por hora; `--simulador 0` las apaga) y abre **http://localhost:8000**,
-la página del paciente: autorización, inicio de sesión en Sanitas, verificación de WhatsApp y activación de la búsqueda.
-Todo lo demás ocurre por WhatsApp. Con `--consola` se abre **/demo**, que muestra en una sola pantalla la app, el chat de
-WhatsApp y el lado de Sanitas (citas, correos y simulador). `Ctrl+C` detiene todo.
+`iniciar.py` revisa el `.env`, arranca la Sanitas simulada y SaniBot con cancelaciones simuladas en segundo plano
+(120 por hora; `--simulador 0` las apaga), abre el túnel para el webhook de WhatsApp y abre **http://localhost:8000**,
+la página del paciente. Todo lo demás ocurre por WhatsApp. Para detenerlo: `python iniciar.py --detener`.
+La guía paso a paso está en [`docs/GUIA_WHATSAPP_REAL.md`](docs/GUIA_WHATSAPP_REAL.md).
 
 > Use siempre `localhost`, no `127.0.0.1`: la vinculación con Sanitas regresa a `localhost:8000`.
 
@@ -65,13 +64,11 @@ docker compose up --build
 | Servicio | URL |
 |---|---|
 | SaniBot | http://localhost:8000 |
-| Consola de demostración | http://localhost:8000/demo |
-| Simulador de WhatsApp (vista sencilla) | http://localhost:8000/dev/whatsapp |
 | Portal de Sanitas (simulado) | http://localhost:8100/portal |
 | Correos de Sanitas (Mailpit) | http://localhost:8025 |
 | Documentación de la API | http://localhost:8000/docs y http://localhost:8100/docs |
 
-Para encender el simulador de agenda desde el arranque: `SIMULADOR=120 docker compose up` (o use el botón de la consola).
+Para encender el simulador de agenda desde el arranque: `SIMULADOR=120 docker compose up`.
 
 ### Opción B: sin Docker, a mano (dos terminales)
 
@@ -97,19 +94,13 @@ ruff check .                 # análisis estático
 
 ## Guion de demostración (5 minutos)
 
-Todo ocurre en la consola de demostración (`python iniciar.py --consola`):
-
-1. En la columna **1 · App del paciente**: **Comenzar** → acepte el consentimiento.
-2. En la pantalla de Sanitas elija `paciente1` (contraseña `sanitas123`) y **Autorizar**. SaniBot **nunca ve la contraseña**.
-3. Escriba un número de WhatsApp. El código llega a la columna **2 · WhatsApp**; cópielo y verifique.
-4. Elija **Buscar una fecha anterior** para la cita de Ana, marque sus horarios y active la búsqueda.
-5. En la columna **3 · Sanitas**, pulse **Encender** en el simulador de agenda (o **Un evento ya**). Las cancelaciones de otros pacientes aparecen en la lista.
-6. En el chat llega la oferta con los botones **Aceptar** y **Rechazar**. Pulse **Aceptar**.
-7. Llega la confirmación por WhatsApp, la app del paciente muestra la nueva cita y en la columna de Sanitas aparecen los **correos de Sanitas**: la cancelación de la anterior y la confirmación de la nueva.
-8. Para mostrar la baja, escriba `BAJA` en el chat: SaniBot deja de escribir y suspende las búsquedas.
-
-> Con el simulador a 120 eventos por hora la oferta suele llegar en menos de un minuto. Si la cita de Ana es posterior a
-> los cupos libres de los datos de demostración, la oferta puede llegar de inmediato.
+1. `python iniciar.py` y conectar en Meta la URL del webhook que muestra la terminal.
+2. En la página, **Activar SaniBot** → autorización → Sanitas con `paciente1` / `sanitas123`. SaniBot **nunca ve la contraseña**.
+3. Escribir el celular y enviar desde WhatsApp el mensaje `SANIBOT ……` que muestra la página: la página avanza sola.
+4. **Adelantar esta cita** → **Activar búsqueda**, y cerrar la página.
+5. Llega por WhatsApp la oferta con **Aceptar** y **Rechazar**; al aceptar, llega la confirmación y la cita queda
+   reprogramada en Sanitas, que envía sus correos como siempre.
+6. Escribir `BAJA` para mostrar la baja.
 
 ## Arquitectura
 
@@ -177,13 +168,11 @@ uv pip compile pyproject.toml --extra dev -o requirements-dev.txt --generate-has
 
 Los archivos se generan para Linux con Python 3.12, que es el sistema de GitHub Actions y de la imagen Docker.
 
-## WhatsApp real (API de WhatsApp Cloud)
+## WhatsApp (API de WhatsApp Cloud)
 
-La guía completa está en [`docs/GUIA_WHATSAPP_REAL.md`](docs/GUIA_WHATSAPP_REAL.md). En resumen:
-
-1. `python -m sanibot.plantillas registrar` y luego `python -m sanibot.plantillas estado` hasta que las cinco estén aprobadas.
-2. `python iniciar.py --tunel` para exponer `POST /webhooks/whatsapp` con HTTPS y registrar esa URL en Meta con el `VERIFY_TOKEN`. SaniBot verifica la firma `X-Hub-Signature-256` con el `APP_SECRET`.
-3. `SANIBOT_WHATSAPP_MODE=cloud` en el `.env`. La consola de demostración muestra entonces el estado de entrega de cada mensaje (enviado, entregado, leído) y los botones se pulsan desde el celular.
+Vea [`docs/GUIA_WHATSAPP_REAL.md`](docs/GUIA_WHATSAPP_REAL.md). La verificación del número la inicia el paciente
+(envía `SANIBOT 123456` al bot), lo que comprueba que el número es suyo y abre la ventana de 24 horas en la que SaniBot
+puede responderle; si una plantilla aún no está aprobada, SaniBot envía el mismo contenido como mensaje de sesión.
 
 En producción, el número sería la cuenta verificada que provee Sanitas con el nombre SaniBot.
 
@@ -198,7 +187,6 @@ Para usarlo, apunte las variables `SANIBOT_OAUTH_*` a `http://localhost:8080/rea
 - `Settings.check_production()` impide arrancar fuera de localhost con los secretos de desarrollo o sin cookies seguras.
 - Las llaves de cifrado deben vivir en un gestor de llaves (KMS). `TokenCipher` es el punto de integración y ya soporta la rotación.
 - Los endpoints `/admin/*` exigen `X-Admin-Key`. En producción deben quedar detrás de la red interna o de un API Gateway con WAF.
-- Las rutas `/dev/*` solo existen en el modo consola de WhatsApp.
 
 ## Limitaciones conocidas de esta versión
 

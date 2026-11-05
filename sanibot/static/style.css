@@ -151,3 +151,11 @@ table{border-collapse:collapse;width:100%}th,td{border-bottom:1px solid var(--li
   .site-nav{gap:14px;font-size:.88rem}.site-nav a[href='/inicio']{display:none}
   .two{grid-template-columns:1fr}.item{grid-template-columns:1fr}.item .row{grid-row:auto;grid-column:auto;align-items:flex-start}
 }
+
+/* verificación iniciada por el paciente */
+.codigo-envio{font-size:1.6rem;font-weight:700;letter-spacing:.06em;color:var(--navy);background:var(--sky-2);
+  border:1.5px dashed #9fb4d3;border-radius:8px;padding:14px 20px;display:inline-block;margin:10px 0 4px}
+.espera{color:var(--muted);font-size:.95rem;margin-top:22px}
+.espera::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--blue);margin-right:8px;
+  vertical-align:1px;animation:pulse 1.8s infinite}
+@media (prefers-reduced-motion:reduce){.espera::before{animation:none}}

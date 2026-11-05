@@ -1,5 +1,6 @@
 """Consentimiento, vinculación OAuth, tokens, verificación de WhatsApp y desvinculación (HU01, HU02, HU08, HU16, HU18, HU28)."""
 
+import re
 import secrets
 from datetime import timedelta
 
@@ -16,7 +17,6 @@ from sanibot.models import (
     EstadoOferta,
     EstadoSolicitud,
     EstadoVinculo,
-    Notificacion,
     OfertaCupo,
     Paciente,
     SolicitudEspera,
@@ -152,44 +152,68 @@ def unlink(ctx: AppContext, paciente_id: str) -> None:
 
 
 # ------------------------------------------------------------------ WhatsApp (HU08)
-def start_whatsapp_verification(ctx: AppContext, paciente_id: str, phone_raw: str, opt_in: bool) -> str:
+CODIGO_EN_MENSAJE = re.compile(r"\bSANIBOT\W*(\d{6})\b", re.IGNORECASE)
+
+
+def start_whatsapp_verification(ctx: AppContext, paciente_id: str, phone_raw: str, opt_in: bool) -> tuple[str, str]:
+    """Genera el código que el paciente debe ENVIAR a SaniBot desde su WhatsApp.
+
+    Así se comprueba que el número es suyo sin que SaniBot tenga que iniciar la conversación (Meta solo permite
+    plantillas de autenticación a empresas verificadas) y, al escribir el paciente primero, se abre la ventana
+    de 24 horas en la que SaniBot puede responderle.
+    """
     if not opt_in:
         raise AccountError("Para usar SaniBot debe autorizar los mensajes de WhatsApp: es el único canal de ofertas.")
     phone = normalize_phone(phone_raw)
     code = generate_code()
     with ctx.db.session() as s:
+        for anterior in s.scalars(select(VerificacionWhatsApp).where(VerificacionWhatsApp.paciente_id == paciente_id,
+                                                                     VerificacionWhatsApp.usado.is_(False))):
+            anterior.usado = True  # solo vale el código más reciente
         s.add(VerificacionWhatsApp(paciente_id=paciente_id, telefono=phone,
                                    codigo_hash=hash_code(code, ctx.settings.secret_key),
                                    expira_en=timeutil.now() + timedelta(minutes=ctx.settings.verification_code_minutes)))
-        audit(s, "paciente", "WHATSAPP_VERIFICACION_ENVIADA", paciente_id, telefono_final=phone[-4:])
-    wa_id = ctx.whatsapp.send_template(phone, "sanibot_verificacion", [code])  # WhatsAppError -> lo maneja la web
-    with ctx.db.session() as s:
-        s.add(Notificacion(paciente_id=paciente_id, plantilla="sanibot_verificacion", wa_message_id=wa_id))
-    return phone
+        audit(s, "paciente", "WHATSAPP_VERIFICACION_INICIADA", paciente_id, telefono_final=phone[-4:])
+    return phone, code
 
 
-def confirm_whatsapp(ctx: AppContext, paciente_id: str, code: str) -> None:
+def confirm_whatsapp_message(ctx: AppContext, from_phone: str, text: str) -> str | None:
+    """Procesa un mensaje entrante «SANIBOT 123456». Devuelve el resultado, o None si no es un código."""
+    m = CODIGO_EN_MENSAJE.search(text or "")
+    if not m:
+        return None
     with ctx.db.session() as s:
-        v = s.scalar(select(VerificacionWhatsApp).where(VerificacionWhatsApp.paciente_id == paciente_id,
+        v = s.scalar(select(VerificacionWhatsApp).where(VerificacionWhatsApp.telefono == from_phone,
                                                         VerificacionWhatsApp.usado.is_(False))
                      .order_by(VerificacionWhatsApp.expira_en.desc()))
-        if not v or v.expira_en < timeutil.now():
-            raise AccountError("El código venció. Solicite uno nuevo.")
-        if v.intentos >= ctx.settings.verification_max_attempts:
-            raise AccountError("Superó el número de intentos. Solicite un código nuevo.")
+        if not v:
+            return "SIN_VERIFICACION"  # el número que escribe no es el que el paciente registró en la página
+        if v.expira_en < timeutil.now() or v.intentos >= ctx.settings.verification_max_attempts:
+            return "CODIGO_VENCIDO"
         v.intentos += 1
-        if not secrets.compare_digest(v.codigo_hash, hash_code(code.strip(), ctx.settings.secret_key)):
-            s.commit()
-            raise AccountError("Código incorrecto.")
-        v.usado = True
-        paciente = s.get(Paciente, paciente_id)
-        now = timeutil.now()
-        paciente.telefono_whatsapp, paciente.whatsapp_verificado_en = v.telefono, now
-        paciente.opt_in_whatsapp_en, paciente.opt_out_whatsapp_en = now, None
-        audit(s, "paciente", "WHATSAPP_VERIFICADO", paciente_id, telefono_final=v.telefono[-4:])
-        nombre = (paciente.nombre or "").split(" ")[0] or "paciente"
-        # Si la bienvenida falla, el número igual queda verificado (el paciente ya recibió el código).
-        send_safe(ctx, s, paciente, "sanibot_bienvenida", [nombre])
+        if not secrets.compare_digest(v.codigo_hash, hash_code(m.group(1), ctx.settings.secret_key)):
+            return "CODIGO_INCORRECTO"
+        _mark_verified(ctx, s, v)
+        return "VERIFICADO"
+
+
+def whatsapp_verified(ctx: AppContext, paciente_id: str) -> bool:
+    with ctx.db.session() as s:
+        p = s.get(Paciente, paciente_id)
+        return bool(p and p.puede_recibir_whatsapp)
+
+
+def _mark_verified(ctx: AppContext, s, v: VerificacionWhatsApp) -> None:
+    v.usado = True
+    paciente_id = v.paciente_id
+    paciente = s.get(Paciente, paciente_id)
+    now = timeutil.now()
+    paciente.telefono_whatsapp, paciente.whatsapp_verificado_en = v.telefono, now
+    paciente.opt_in_whatsapp_en, paciente.opt_out_whatsapp_en = now, None
+    audit(s, "paciente", "WHATSAPP_VERIFICADO", paciente_id, telefono_final=v.telefono[-4:])
+    nombre = (paciente.nombre or "").split(" ")[0] or "paciente"
+    # Si la bienvenida falla, el número igual queda verificado: el paciente ya demostró que es suyo.
+    send_safe(ctx, s, paciente, "sanibot_bienvenida", [nombre])
 
 
 def opt_out(ctx: AppContext, phone: str) -> bool:
