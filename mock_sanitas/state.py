@@ -214,7 +214,7 @@ class SanitasState:
 
 
 def seed(state: SanitasState, rnd_seed: int = 7) -> None:
-    """Datos de demostración: la agenda de las próximas 3 semanas está llena; los pacientes de demo tienen citas lejanas."""
+    """Datos de demostración: la agenda de las próximas 3 semanas está llena y los pacientes de prueba no tienen citas."""
     rnd = random.Random(rnd_seed)
     demo = [("paciente1", "Ana Gómez", "ana.gomez@example.com"), ("paciente2", "Luis Pérez", "luis.perez@example.com"),
             ("paciente3", "María Rodríguez", "maria.rodriguez@example.com")]
@@ -237,12 +237,4 @@ def seed(state: SanitasState, rnd_seed: int = 7) -> None:
             s.estado = "booked"
             a = Appointment(id=f"cita-{uuid.uuid4().hex[:10]}", slot_id=s.id, username=rnd.choice(others))
             state.appointments[a.id] = a
-    # citas lejanas de los pacientes de demostración (días 28 a 40)
-    for u, esp in (("paciente1", "Medicina general"), ("paciente2", "Odontología"), ("paciente3", "Pediatría")):
-        free = sorted((s for s in state.slots.values() if s.especialidad == esp and s.estado == "free"
-                       and 28 <= (s.inicio - datetime.now(UTC)).days <= 40), key=lambda s: s.inicio)
-        if free:
-            s = free[len(free) // 2]
-            s.estado = "booked"
-            a = Appointment(id=f"cita-{uuid.uuid4().hex[:10]}", slot_id=s.id, username=u)
-            state.appointments[a.id] = a
+    # Los pacientes de prueba empiezan sin citas: SaniBot les busca la primera y luego la puede adelantar.

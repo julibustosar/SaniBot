@@ -86,16 +86,16 @@ class Plantilla:
 PLANTILLAS: dict[str, Plantilla] = {p.nombre: p for p in (
     Plantilla("sanibot_bienvenida", "UTILITY",
               "Hola {{1}}, soy SaniBot, el bot complementario y autorizado de EPS Sanitas. Te avisaré por aquí "
-              "cuando encuentre una cita más pronta. Nunca te pediré contraseñas ni pagos. Escribe BAJA si no "
+              "cuando encuentre una cita para ti. Nunca te pediré contraseñas ni pagos. Escribe BAJA si no "
               "quieres recibir más mensajes.",
               ejemplos=("Ana",)),
-    Plantilla("sanibot_oferta_cupo", "UTILITY",
-              "¡Hay un cupo disponible antes de tu cita! 📅 {{1}} a las {{2}}, sede {{3}}. Tienes {{4}} minutos "
-              "para responder. Si no respondes, tu cita actual se mantiene.",
+    Plantilla("sanibot_oferta", "UTILITY",
+              "SaniBot encontró un cupo para ti 📅 {{1}} a las {{2}}, sede {{3}}. ¿Lo quieres? Tienes {{4}} minutos "
+              "para responder. Si no respondes, no se hace ningún cambio.",
               ejemplos=("martes 3 de noviembre", "9:00 a. m.", "Teusaquillo", "30"), botones=("Aceptar", "Rechazar")),
-    Plantilla("sanibot_confirmacion", "UTILITY",
-              "Listo. Tu nueva cita es el {{1}} a las {{2}}, sede {{3}}. Sanitas te enviará por correo, como "
-              "siempre, la cancelación de tu cita anterior y la confirmación de la nueva.",
+    Plantilla("sanibot_cita_agendada", "UTILITY",
+              "Listo. Tu cita quedó para el {{1}} a las {{2}}, sede {{3}}. Sanitas te enviará por correo la "
+              "confirmación (y la cancelación de tu cita anterior, si la cambiamos), como siempre.",
               ejemplos=("martes 3 de noviembre", "9:00 a. m.", "Teusaquillo")),
     Plantilla("sanibot_aviso", "UTILITY",
               # Meta no acepta un cuerpo que empiece o termine en una variable.
@@ -135,6 +135,9 @@ class WhatsAppClient:
                       buttons: list[tuple[str, str]] | None = None) -> str:
         raise NotImplementedError
 
+    def send_session(self, to: str, text: str, buttons: list[tuple[str, str]] | None = None) -> str:
+        raise NotImplementedError
+
 
 class ConsoleWhatsApp(WhatsAppClient):
     """Doble de pruebas: guarda los mensajes en memoria. Solo lo usan las pruebas automáticas."""
@@ -152,6 +155,14 @@ class ConsoleWhatsApp(WhatsAppClient):
         msg = OutgoingMessage(to, template, params, buttons or [])
         self.outbox.append(msg)
         log.info("WhatsApp [%s] -> %s: %s", template, to[-4:].rjust(len(to), "*"), msg.preview())
+        return msg.id
+
+    def send_session(self, to, text, buttons=None):
+        if self.fail_next:
+            self.fail_next = False
+            raise WhatsAppError("Fallo simulado de envío")
+        msg = OutgoingMessage(to, "sesion", [text], buttons or [])
+        self.outbox.append(msg)
         return msg.id
 
     def record_reply(self, frm: str, texto: str) -> None:

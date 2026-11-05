@@ -174,6 +174,22 @@ def detener() -> int:
     return 0 if not quedan else 1
 
 
+def reiniciar_datos(env: dict[str, str]) -> None:
+    """Borra la base de datos local de SaniBot para empezar de cero.
+
+    La Sanitas simulada guarda todo en memoria y se reinicia en cada arranque; si SaniBot conservara sus datos,
+    quedarían cuentas vinculadas y búsquedas que apuntan a citas que ya no existen.
+    """
+    url = env.get("SANIBOT_DATABASE_URL", "sqlite:///./sanibot.db")
+    if not url.startswith("sqlite:///"):
+        return  # solo se reinicia la base local de la demostración, nunca un PostgreSQL
+    ruta = (RAIZ / url.removeprefix("sqlite:///")).resolve()
+    if ruta.parent == RAIZ and ruta.exists():
+        for extra in ("", "-wal", "-shm", "-journal"):
+            Path(str(ruta) + extra).unlink(missing_ok=True)
+        print("· Empecé de cero: borré los datos de la sesión anterior (usa --conservar-datos para mantenerlos).")
+
+
 def revisar_config(env: dict[str, str]) -> bool:
     """Detecta errores frecuentes del .env antes de arrancar."""
     problemas = []
@@ -203,6 +219,8 @@ def main() -> int:
     ap.add_argument("--tunel", action="store_true", help=argparse.SUPPRESS)  # el túnel ya es lo normal
     ap.add_argument("--sin-navegador", action="store_true", help="no abrir el navegador")
     ap.add_argument("--detener", action="store_true", help="detiene SaniBot y la Sanitas simulada si quedaron corriendo")
+    ap.add_argument("--conservar-datos", action="store_true",
+                    help="no borrar los datos de la sesión anterior (por defecto cada arranque empieza de cero)")
     args = ap.parse_args()
     if args.detener:
         return detener()
@@ -218,6 +236,8 @@ def main() -> int:
     env = entorno(datos, args.simulador)
     if not revisar_config(env):
         return 1
+    if not args.conservar_datos:
+        reiniciar_datos(env)
     py = sys.executable
     procesos: list[subprocess.Popen] = []
     try:

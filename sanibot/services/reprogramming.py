@@ -21,7 +21,7 @@ from sanibot.models import (
     RegistroAuditoria,
     TipoSolicitud,
 )
-from sanibot.services import accounts
+from sanibot.services import accounts, requests_service
 from sanibot.services.audit import audit
 from sanibot.services.context import AppContext
 from sanibot.services.notifier import send_safe
@@ -87,7 +87,13 @@ def reprogram(ctx: AppContext, oferta_id: str) -> bool:
             _fail(ctx, s, oferta, "autorización vencida")
             return False
         try:
-            nueva = ctx.sanitas.book(token, oferta.cupo_id, oferta.hold_id)
+            if sol.tipo == TipoSolicitud.CITA_NUEVA and requests_service.cita_activa_de(ctx, token, sol.especialidad):
+                # El paciente consiguió una cita de esa especialidad por otro canal mientras esperaba.
+                _fail(ctx, s, oferta, f"ya tiene una cita activa de {sol.especialidad}")
+                sol.estado = EstadoSolicitud.CUMPLIDA
+                return False
+            nueva = ctx.sanitas.book(token, oferta.cupo_id, oferta.hold_id,
+                                     sol.cita_actual_id if sol.tipo == TipoSolicitud.ADELANTAR_CITA else None)
         except SanitasError as exc:
             _fail(ctx, s, oferta, f"no se pudo reservar el cupo: {exc}")
             return False
@@ -108,7 +114,7 @@ def reprogram(ctx: AppContext, oferta_id: str) -> bool:
         audit(s, "sistema", "REPROGRAMACION_OK", paciente.id, oferta_id=oferta.id, cita_nueva=nueva.id,
               cita_anterior=oferta.cita_anterior_id)
         breaker_register_success(ctx, s)
-        send_safe(ctx, s, paciente, "sanibot_confirmacion",
+        send_safe(ctx, s, paciente, "sanibot_cita_agendada",
                   [timeutil.fecha_larga(nueva.inicio), timeutil.hora(nueva.inicio), nueva.sede])
         return True
 

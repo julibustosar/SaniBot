@@ -103,7 +103,11 @@ class Simulador:
                      and self.state.slots[a.slot_id].inicio > limite]
             if not citas:
                 return None
-            a = self.rnd.choice(citas)
+            # Las cancelaciones se concentran en las citas próximas: según el personal administrativo, cerca de la
+            # mitad llega con menos de 48 horas. El 70 % de las veces se cancela una cita del tercio más cercano.
+            citas.sort(key=lambda c: self.state.slots[c.slot_id].inicio)
+            cercanas = citas[: max(1, len(citas) // 3)]
+            a = self.rnd.choice(cercanas if self.rnd.random() < 0.7 else citas)
             self.state.cancel(a.id, source="portal")
             s = self.state.slots[a.slot_id]
         return {"tipo": "cancelacion", "texto": f"Otro paciente canceló {especialidad} del {self._cuando(s.inicio)}"}

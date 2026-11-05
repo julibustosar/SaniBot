@@ -21,8 +21,8 @@
   </li>
 {% endfor %}
 </ul>
-{% else %}<p class="muted">No encontramos citas agendadas.</p>{% endif %}
-{% if whatsapp_ok and vigente %}<div class="actions"><a class="button secondary" href="/solicitudes/nueva">Necesito una cita nueva</a></div>{% endif %}
+{% else %}<p>Todavía no tienes citas en este centro médico. SaniBot puede buscarte la primera y, cuando la tengas, seguir buscando una fecha más pronta.</p>{% endif %}
+{% if whatsapp_ok and vigente %}<div class="actions"><a class="button {{ 'secondary' if citas else '' }}" href="/solicitudes/nueva">{{ 'Necesito una cita nueva' if citas else 'Buscarme una cita' }}</a></div>{% endif %}
 <details><summary>Desvincular mi cuenta</summary>
 <form method="post" action="/cuenta/desvincular"><input type="hidden" name="csrf" value="{{ csrf }}">
 <p>SaniBot revocará su autorización en Sanitas y detendrá tus búsquedas. Tus citas actuales no cambian.</p>

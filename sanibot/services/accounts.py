@@ -1,7 +1,9 @@
 """Consentimiento, vinculación OAuth, tokens, verificación de WhatsApp y desvinculación (HU01, HU02, HU08, HU16, HU18, HU28)."""
 
+import logging
 import re
 import secrets
+import unicodedata
 from datetime import timedelta
 
 from sqlalchemy import select
@@ -9,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from sanibot import timeutil
 from sanibot.integrations.sanitas import SanitasAuthError, pkce_pair
-from sanibot.integrations.whatsapp import normalize_phone
+from sanibot.integrations.whatsapp import WhatsAppError, normalize_phone
 from sanibot.models import (
     OFERTA_ACTIVA,
     Consentimiento,
@@ -17,6 +19,7 @@ from sanibot.models import (
     EstadoOferta,
     EstadoSolicitud,
     EstadoVinculo,
+    Notificacion,
     OfertaCupo,
     Paciente,
     SolicitudEspera,
@@ -26,6 +29,17 @@ from sanibot.security.crypto import generate_code, hash_code
 from sanibot.services.audit import audit
 from sanibot.services.context import AppContext
 from sanibot.services.notifier import send_safe
+
+log = logging.getLogger("sanibot.accounts")
+
+# Frases con las que el paciente se da de baja. No importan mayúsculas, tildes, signos ni espacios de más.
+FRASES_BAJA = {"baja", "stop", "darme de baja", "dar de baja", "me doy de baja", "quiero darme de baja"}
+
+
+def es_mensaje_de_baja(texto: str) -> bool:
+    sin_tildes = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
+    palabras = re.sub(r"[^a-z ]", " ", sin_tildes.lower()).split()
+    return " ".join(palabras) in FRASES_BAJA
 
 FINALIDAD = ("SaniBot tratará sus datos de identificación, contacto de WhatsApp y citas en la sede Teusaquillo con la "
              "única finalidad de buscar, ofrecer y reprogramar citas según sus preferencias. No accede a su historia "
@@ -216,17 +230,37 @@ def _mark_verified(ctx: AppContext, s, v: VerificacionWhatsApp) -> None:
     send_safe(ctx, s, paciente, "sanibot_bienvenida", [nombre])
 
 
-def opt_out(ctx: AppContext, phone: str) -> bool:
-    """El paciente escribió BAJA: deja de recibir mensajes y sus solicitudes se suspenden."""
+MENSAJE_BAJA = ("Listo, te diste de baja de SaniBot. No te enviaremos más mensajes y tus búsquedas de citas quedaron "
+                "pausadas; tus citas en Sanitas no cambian. Si quieres volver a usar SaniBot, actívalo de nuevo desde su página.")
+MENSAJE_YA_DE_BAJA = ("Ya estás dado de baja de SaniBot y no recibirás mensajes. Si quieres volver a usarlo, actívalo de "
+                      "nuevo desde su página.")
+
+
+def opt_out(ctx: AppContext, phone: str) -> str | None:
+    """El paciente escribió BAJA: deja de recibir mensajes, sus solicitudes se suspenden y se le confirma por WhatsApp.
+
+    Devuelve "BAJA", "YA_DE_BAJA" o None si el número no pertenece a ningún paciente (en ese caso no se responde).
+    """
     with ctx.db.session() as s:
         paciente = s.scalar(select(Paciente).where(Paciente.telefono_whatsapp == phone))
-        if not paciente or paciente.opt_out_whatsapp_en:
-            return False
-        paciente.opt_out_whatsapp_en = timeutil.now()
-        for sol in s.scalars(select(SolicitudEspera).where(SolicitudEspera.paciente_id == paciente.id,
-                                                           SolicitudEspera.estado.in_([EstadoSolicitud.ACTIVA,
-                                                                                       EstadoSolicitud.CON_OFERTA]))):
-            _cancel_active_offers(ctx, s, sol)
-            sol.estado = EstadoSolicitud.SUSPENDIDA
-        audit(s, "paciente", "WHATSAPP_BAJA", paciente.id)
-        return True
+        if not paciente:
+            return None
+        if paciente.opt_out_whatsapp_en:
+            resultado, texto = "YA_DE_BAJA", MENSAJE_YA_DE_BAJA
+        else:
+            paciente.opt_out_whatsapp_en = timeutil.now()
+            for sol in s.scalars(select(SolicitudEspera).where(SolicitudEspera.paciente_id == paciente.id,
+                                                               SolicitudEspera.estado.in_([EstadoSolicitud.ACTIVA,
+                                                                                           EstadoSolicitud.CON_OFERTA]))):
+                _cancel_active_offers(ctx, s, sol)
+                sol.estado = EstadoSolicitud.SUSPENDIDA
+            audit(s, "paciente", "WHATSAPP_BAJA", paciente.id)
+            resultado, texto = "BAJA", MENSAJE_BAJA
+        # El paciente acaba de escribir, así que la ventana de 24 horas está abierta: se responde sin plantilla.
+        # La confirmación es la única respuesta permitida después de la baja; si falla, la baja igual queda hecha.
+        try:
+            wa_id = ctx.whatsapp.send_session(phone, texto)
+            s.add(Notificacion(paciente_id=paciente.id, plantilla="confirmacion_baja", wa_message_id=wa_id))
+        except WhatsAppError as exc:
+            log.warning("No se pudo confirmar la baja al paciente %s: %s", paciente.id, exc)
+        return resultado

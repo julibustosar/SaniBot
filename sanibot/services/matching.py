@@ -176,7 +176,7 @@ def _try_offer(ctx: AppContext, sol_id: str, cupo: Cupo) -> tuple[str, str | Non
             oferta.estado, oferta.respondida_en = EstadoOferta.ACEPTADA, timeutil.now()
         else:
             try:
-                send(ctx, s, paciente, "sanibot_oferta_cupo",
+                send(ctx, s, paciente, "sanibot_oferta",
                      [timeutil.fecha_larga(cupo.inicio), timeutil.hora(cupo.inicio), cupo.sede,
                       str(ctx.settings.offer_window_minutes)],
                      buttons=[("Aceptar", f"ACEPTAR:{oferta.id}"), ("Rechazar", f"RECHAZAR:{oferta.id}")],

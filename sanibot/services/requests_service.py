@@ -69,6 +69,11 @@ def create_request(ctx: AppContext, paciente_id: str, *, tipo: TipoSolicitud, ci
         else:
             if especialidad not in ESPECIALIDADES:
                 raise RequestError("Especialidad no válida")
+            existente = cita_activa_de(ctx, token, especialidad)
+            if existente:
+                raise RequestError(f"Ya tienes una cita de {especialidad} el {timeutil.fecha_larga(existente.inicio)}. "
+                                   "La EPS no permite dos citas activas de la misma especialidad: si la necesitas antes, "
+                                   "usa «Adelantar esta cita».")
             duplicada = s.scalar(select(SolicitudEspera.id).where(
                 SolicitudEspera.paciente_id == paciente.id, SolicitudEspera.tipo == TipoSolicitud.CITA_NUEVA,
                 SolicitudEspera.especialidad == especialidad, SolicitudEspera.estado.in_(ACTIVAS)))
@@ -81,6 +86,21 @@ def create_request(ctx: AppContext, paciente_id: str, *, tipo: TipoSolicitud, ci
         sol_id = sol.id
     matching.scan_free_slots(ctx, sol_id)
     return sol_id
+
+
+def cita_activa_de(ctx: AppContext, token: str, especialidad: str):
+    """Cita vigente del paciente en esa especialidad, según Sanitas (fuente de verdad), o None."""
+    return next((c for c in ctx.sanitas.list_appointments(token)
+                 if c.estado == "booked" and c.especialidad == especialidad), None)
+
+
+def especialidades_para_cita_nueva(ctx: AppContext, paciente_id: str) -> list[str]:
+    """Especialidades en las que el paciente no tiene cita activa (las únicas que puede pedir como cita nueva)."""
+    with ctx.db.session() as s:
+        paciente = s.get(Paciente, paciente_id)
+        token = accounts.get_access_token(ctx, s, paciente)
+        ocupadas = {c.especialidad for c in ctx.sanitas.list_appointments(token) if c.estado == "booked"}
+    return [e for e in ESPECIALIDADES if e not in ocupadas]
 
 
 def cancel_request(ctx: AppContext, paciente_id: str, solicitud_id: str) -> None:

@@ -90,6 +90,7 @@ class MockConfig:
 class BookIn(BaseModel):
     slot: str
     hold_id: str | None = None
+    reemplaza: str | None = None  # cita que se va a cancelar en una reprogramación
 
 
 class HoldIn(BaseModel):
@@ -273,6 +274,15 @@ def create_app(state: SanitasState | None = None, cfg: MockConfig | None = None)
 
     @app.post("/fhir/Appointment", status_code=201)
     def book(body: BookIn, patient=Depends(require_scope("citas.reprogramar"))):
+        # Regla de la EPS: un paciente no puede tener dos citas activas de la misma especialidad,
+        # salvo durante una reprogramación (la cita nueva reemplaza a la indicada en «reemplaza»).
+        with state.lock:
+            slot = state.slots.get(body.slot)
+            if slot:
+                for a in state.appointments.values():
+                    if (a.username == patient.username and a.estado == "booked" and a.id != body.reemplaza
+                            and state.slots[a.slot_id].especialidad == slot.especialidad):
+                        raise HTTPException(409, f"El paciente ya tiene una cita activa de {slot.especialidad}")
         try:
             a = state.book(patient.username, body.slot, body.hold_id, source="api")
         except LookupError as exc:

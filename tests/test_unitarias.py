@@ -111,3 +111,29 @@ def test_lanzador_agrega_la_llave_sin_reescribir_el_env(tmp_path, monkeypatch):
     assert datos["SANIBOT_TOKEN_ENCRYPTION_KEYS"] and datos["OTRA"] == "1"
     assert iniciar.leer_env(env)["SANIBOT_TOKEN_ENCRYPTION_KEYS"] == datos["SANIBOT_TOKEN_ENCRYPTION_KEYS"]
     assert env.read_text(encoding="utf-8").startswith("SANIBOT_TOKEN_ENCRYPTION_KEYS=\nOTRA=1\n")
+
+
+def test_al_reiniciar_el_servidor_nadie_queda_con_sesion_abierta():
+    from starlette.requests import Request
+    from starlette.responses import Response
+
+    from sanibot.security.sessions import COOKIE, SessionManager
+
+    antes, despues = SessionManager("clave", False), SessionManager("clave", False)
+    resp = Response()
+    antes.save(resp, {"paciente_id": "p1"})
+    cookie = resp.headers["set-cookie"].split(";")[0].split("=", 1)[1]
+    req = Request({"type": "http", "headers": [(b"cookie", f"{COOKIE}={cookie}".encode())]})
+    assert antes.load(req)["paciente_id"] == "p1"
+    assert despues.load(req) == {}  # misma clave, otro arranque: la sesión ya no vale
+
+
+def test_el_lanzador_empieza_de_cero(tmp_path, monkeypatch):
+    import iniciar
+
+    monkeypatch.setattr(iniciar, "RAIZ", tmp_path)
+    db = tmp_path / "sanibot.db"
+    db.write_text("x")
+    iniciar.reiniciar_datos({})
+    assert not db.exists()
+    iniciar.reiniciar_datos({"SANIBOT_DATABASE_URL": "postgresql://x"})  # nunca toca otra base

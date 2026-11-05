@@ -8,8 +8,13 @@
   <input type="hidden" name="csrf" value="{{ csrf }}">
   <input type="hidden" name="cita_id" value="{{ cita_id }}">
   {% if not cita_id %}
+  {% if especialidades %}
   <label for="especialidad">Especialidad</label>
   <select id="especialidad" name="especialidad" required>{% for e in especialidades %}<option>{{ e }}</option>{% endfor %}</select>
+  <p class="muted">Solo aparecen las especialidades en las que no tienes una cita activa: la EPS no permite dos citas de la misma especialidad.</p>
+  {% else %}
+  <p class="error">Ya tienes una cita activa en todas las especialidades disponibles. Si necesitas una antes, vuelve a tus citas y usa «Adelantar esta cita».</p>
+  {% endif %}
   {% endif %}
   <fieldset><legend>¿En qué horario puedes ir?</legend>
     <div class="two">
@@ -20,8 +25,13 @@
   </fieldset>
   <fieldset><legend>Cuando aparezca un cupo</legend>
     <div class="choices">
+      {% if cita_id %}
       <label class="choice"><input type="radio" name="modo" value="CON_CONFIRMACION" checked><span>Pregúntame por WhatsApp<small>Recomendado. Respondes con Aceptar o Rechazar.</small></span></label>
       <label class="choice"><input type="radio" name="modo" value="AUTOMATICO"><span>Cambia la cita por mí<small>SaniBot la reprograma y te avisa por WhatsApp.</small></span></label>
+      {% else %}
+      <label class="choice"><input type="radio" name="modo" value="AUTOMATICO" checked><span>Agéndala por mí<small>Recomendado. SaniBot toma el primer cupo que te sirva y te avisa por WhatsApp.</small></span></label>
+      <label class="choice"><input type="radio" name="modo" value="CON_CONFIRMACION"><span>Pregúntame por WhatsApp<small>Respondes con Aceptar o Rechazar.</small></span></label>
+      {% endif %}
     </div>
   </fieldset>
   <details><summary>Más opciones</summary>
@@ -40,7 +50,7 @@
 <h2>Así te llegará la oferta</h2>
 <div class="msg-preview" aria-label="Ejemplo del mensaje">
   <div class="from">SaniBot · cuenta verificada</div>
-  <div class="bubble">¡Hay un cupo disponible antes de tu cita! Fecha, hora y sede. Tienes {{ minutos }} minutos para responder.</div>
+  <div class="bubble">SaniBot encontró un cupo para ti: fecha, hora y sede. Tienes {{ minutos }} minutos para responder.</div>
   <div class="btns" aria-hidden="true"><span>Aceptar</span><span>Rechazar</span></div>
 </div>
 <p>Si no respondes a tiempo, tu cita actual se mantiene y seguimos buscando.</p>

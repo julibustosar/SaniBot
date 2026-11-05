@@ -54,8 +54,8 @@ def handle_whatsapp_payload(ctx: AppContext, payload: dict) -> list[str]:
             action, oferta_id = m["value"].split(":", 1)
             if action in ("ACEPTAR", "RECHAZAR"):
                 results.append(matching.respond_offer(ctx, m["from"], oferta_id, accept=action == "ACEPTAR"))
-        elif m["kind"] == "text" and m["value"].strip().upper() in ("BAJA", "STOP"):
-            results.append("BAJA" if accounts.opt_out(ctx, m["from"]) else "IGNORADO")
+        elif m["kind"] == "text" and accounts.es_mensaje_de_baja(m["value"]):
+            results.append(accounts.opt_out(ctx, m["from"]) or "IGNORADO")
         elif m["kind"] == "text":
             resultado = accounts.confirm_whatsapp_message(ctx, m["from"], m["value"])
             if resultado:

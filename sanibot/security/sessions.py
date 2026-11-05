@@ -13,6 +13,8 @@ class SessionManager:
     def __init__(self, secret_key: str, secure: bool):
         self._s = URLSafeTimedSerializer(secret_key, salt="sanibot-session")
         self.secure = secure
+        # Cada arranque del servidor invalida las sesiones anteriores: al reiniciar, nadie queda con sesión abierta.
+        self.arranque = secrets.token_hex(8)
 
     def load(self, request: Request) -> dict:
         raw = request.cookies.get(COOKIE)
@@ -22,11 +24,13 @@ class SessionManager:
             data = self._s.loads(raw, max_age=MAX_AGE)
         except BadSignature:
             return {}
-        return data if isinstance(data, dict) else {}
+        if not isinstance(data, dict) or data.get("_arranque") != self.arranque:
+            return {}
+        return data
 
     def save(self, response: Response, data: dict) -> None:
-        response.set_cookie(COOKIE, self._s.dumps(data), max_age=MAX_AGE, httponly=True, samesite="lax",
-                            secure=self.secure)
+        valor = self._s.dumps({**data, "_arranque": self.arranque})
+        response.set_cookie(COOKIE, valor, max_age=MAX_AGE, httponly=True, samesite="lax", secure=self.secure)
 
     def clear(self, response: Response) -> None:
         response.delete_cookie(COOKIE)

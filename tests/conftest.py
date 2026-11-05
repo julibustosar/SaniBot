@@ -141,7 +141,7 @@ class Harness:
         return self.client.post("/webhooks/whatsapp", json=body).json()
 
     def offers_to(self, phone):
-        return [m for m in self.wa.outbox if m.to == phone and m.template == "sanibot_oferta_cupo"]
+        return [m for m in self.wa.outbox if m.to == phone and m.template == "sanibot_oferta"]
 
 
 @pytest.fixture

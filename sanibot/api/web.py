@@ -170,9 +170,18 @@ def home(request: Request, ctx: AppContext = Depends(get_ctx)):
 
 @router.get("/solicitudes/nueva", response_class=HTMLResponse)
 def new_request_form(request: Request, cita_id: str = "", ctx: AppContext = Depends(get_ctx)):
-    _paciente_id(request)
-    return _render(request, "request_form.html", cita_id=cita_id, especialidades=ESPECIALIDADES,
+    pid = _paciente_id(request)
+    return _render(request, "request_form.html", cita_id=cita_id, especialidades=_especialidades(ctx, pid, cita_id),
                    minutos=ctx.settings.offer_window_minutes)
+
+
+def _especialidades(ctx: AppContext, pid: str, cita_id: str) -> list[str]:
+    if cita_id:
+        return ESPECIALIDADES
+    try:
+        return requests_service.especialidades_para_cita_nueva(ctx, pid)
+    except (SanitasError, accounts.AccountError):
+        return ESPECIALIDADES  # Sanitas no responde: la regla se vuelve a validar al crear la solicitud
 
 
 @router.post("/solicitudes/nueva")
@@ -192,7 +201,8 @@ def new_request_submit(request: Request, csrf: str = Form(...), cita_id: str = F
             cita_id=cita_id or None, especialidad=especialidad or None, franjas=franjas, fecha_limite=limite,
             anticipacion_min_horas=anticipacion, modo=ModoReasignacion(modo))
     except (requests_service.RequestError, ValueError, SanitasError) as exc:
-        return _render(request, "request_form.html", 400, cita_id=cita_id, especialidades=ESPECIALIDADES,
+        return _render(request, "request_form.html", 400, cita_id=cita_id,
+                       especialidades=_especialidades(ctx, pid, cita_id), minutos=ctx.settings.offer_window_minutes,
                        error=str(exc))
     return _redirect(request, "/listo")
 

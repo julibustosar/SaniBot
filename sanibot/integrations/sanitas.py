@@ -165,9 +165,9 @@ class SanitasClient:
                 raise
             return None
 
-    def book(self, token: str, slot_id: str, hold_id: str | None) -> Cita:
+    def book(self, token: str, slot_id: str, hold_id: str | None, reemplaza: str | None = None) -> Cita:
         r = self._request("POST", self._url("/Appointment"), headers=self._bearer(token),
-                          json={"slot": slot_id, "hold_id": hold_id})
+                          json={"slot": slot_id, "hold_id": hold_id, "reemplaza": reemplaza})
         return Cita.from_fhir(r.json())
 
     def cancel(self, token: str, appointment_id: str) -> None:

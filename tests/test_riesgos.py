@@ -208,10 +208,38 @@ def test_token_revocado_suspende_y_la_revinculacion_reactiva(h):
 def test_baja_detiene_los_mensajes(h):
     (c1,), otra = _base(h)
     assert h.text(P1, "baja")["resultados"] == ["BAJA"]
+    confirmacion = h.wa.last_to(P1)
+    assert confirmacion.template == "sesion" and "te diste de baja" in confirmacion.params[0]
     n = len(h.wa.outbox)
     h.state.cancel(otra.id, source="portal")
     h.flush()
     assert len(h.wa.outbox) == n
+    with h.ctx.db.session() as s:
+        assert s.scalar(select(SolicitudEspera)).estado == EstadoSolicitud.SUSPENDIDA
+
+
+@pytest.mark.parametrize("texto", ["BAJA", "baja", "Baja.", "  bAjA  ", "Darme de baja", "Quiero darme de baja!", "STOP"])
+def test_baja_reconoce_mayusculas_minusculas_y_signos(h, texto):
+    _base(h)
+    assert h.text(P1, texto)["resultados"] == ["BAJA"]
+
+
+def test_mensajes_que_solo_mencionan_baja_no_dan_de_baja(h):
+    _base(h)
+    assert h.text(P1, "la fiebre no baja")["resultados"] == []
+
+
+def test_baja_repetida_responde_que_ya_esta_de_baja(h):
+    _base(h)
+    h.text(P1, "BAJA")
+    assert h.text(P1, "baja")["resultados"] == ["YA_DE_BAJA"]
+    assert "Ya estás dado de baja" in h.wa.last_to(P1).params[0]
+
+
+def test_si_falla_la_confirmacion_la_baja_igual_queda_hecha(h):
+    _base(h)
+    h.wa.fail_next = True
+    assert h.text(P1, "BAJA")["resultados"] == ["BAJA"]
     with h.ctx.db.session() as s:
         assert s.scalar(select(SolicitudEspera)).estado == EstadoSolicitud.SUSPENDIDA
 

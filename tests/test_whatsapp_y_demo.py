@@ -37,7 +37,7 @@ def test_plantillas_de_utilidad_cumplen_las_reglas_de_meta(p):
 
 
 def test_oferta_tiene_botones_de_respuesta_rapida():
-    d = PLANTILLAS["sanibot_oferta_cupo"].definicion_meta("es")
+    d = PLANTILLAS["sanibot_oferta"].definicion_meta("es")
     botones = next(c for c in d["components"] if c["type"] == "BUTTONS")["buttons"]
     assert [(b["type"], b["text"]) for b in botones] == [("QUICK_REPLY", "Aceptar"), ("QUICK_REPLY", "Rechazar")]
 
@@ -111,7 +111,7 @@ def test_cloud_envia_la_oferta_con_parametros_y_botones():
 
     wa = CloudWhatsApp(_settings(), httpx.Client(transport=httpx.MockTransport(handler)))
     params = ["martes", "9:00 a. m.", "Teusaquillo", "30"]
-    assert wa.send_template(P1, "sanibot_oferta_cupo", params,
+    assert wa.send_template(P1, "sanibot_oferta", params,
                             [("Aceptar", "ACEPTAR:1"), ("Rechazar", "RECHAZAR:1")]) == "wamid.X"
     comps = capturado["template"]["components"]
     assert [p["text"] for p in comps[0]["parameters"]] == params
@@ -250,7 +250,7 @@ def test_si_la_plantilla_no_esta_aprobada_envia_mensaje_de_sesion_con_botones():
 
     wa = CloudWhatsApp(_settings(), httpx.Client(transport=httpx.MockTransport(handler)))
     params = ["martes", "9:00 a. m.", "Teusaquillo", "30"]
-    assert wa.send_template(P1, "sanibot_oferta_cupo", params,
+    assert wa.send_template(P1, "sanibot_oferta", params,
                             [("Aceptar", "ACEPTAR:1"), ("Rechazar", "RECHAZAR:1")]) == "wamid.S"
     sesion = enviados[-1]
     assert sesion["type"] == "interactive"
