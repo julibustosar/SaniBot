@@ -10,7 +10,7 @@ import re
 import secrets
 from dataclasses import dataclass
 from datetime import datetime
-from urllib.parse import urlencode
+from urllib.parse import quote, urlencode
 
 import httpx
 
@@ -87,7 +87,7 @@ class SanitasClient:
         for i in ids:
             if not _ID.fullmatch(str(i)):
                 raise SanitasError("Identificador inválido")
-        return self.s.sanitas_api_url.rstrip("/") + path.format(*ids)
+        return self.s.sanitas_api_url.rstrip("/") + path.format(*(quote(str(i), safe="") for i in ids))
 
     def _request(self, method: str, url: str, **kw) -> httpx.Response:
         try:

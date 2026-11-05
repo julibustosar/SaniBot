@@ -1,5 +1,6 @@
 """Solicitudes de espera: adelantar una cita existente o pedir una cita nueva (HU04, HU05, HU06, HU07, HU16)."""
 
+import re
 from datetime import datetime
 
 from sqlalchemy import select
@@ -23,6 +24,7 @@ from sanibot.services.notifier import send_safe
 
 ACTIVAS = (EstadoSolicitud.ACTIVA, EstadoSolicitud.CON_OFERTA, EstadoSolicitud.SUSPENDIDA)
 FRANJAS_VALIDAS = {"manana", "tarde"}
+ID_VALIDO = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")  # formato de id de HL7 FHIR
 
 
 class RequestError(Exception):
@@ -33,6 +35,8 @@ def create_request(ctx: AppContext, paciente_id: str, *, tipo: TipoSolicitud, ci
                    especialidad: str | None = None, franjas: list[str] | None = None,
                    fecha_limite: datetime | None = None, anticipacion_min_horas: int = 24,
                    modo: ModoReasignacion = ModoReasignacion.CON_CONFIRMACION) -> str:
+    if cita_id is not None and not ID_VALIDO.fullmatch(cita_id):
+        raise RequestError("La cita no existe o ya no está vigente")
     franjas = sorted(set(franjas or []))
     if not set(franjas) <= FRANJAS_VALIDAS:
         raise RequestError("Franja horaria no válida")

@@ -162,6 +162,21 @@ Paciente ──HTTPS──▶ App web SaniBot ──▶ Backend SaniBot ──OA
 | 37 Reprogramación masiva | Interruptor de seguridad por umbral por minuto | `test_interruptor_detiene_reprogramaciones_masivas` |
 | 43 Desincronización con el portal | Eventos de cambios + verificación de la cita vigente antes de ofrecer | `test_cancelar_en_el_portal_...`, `test_reprogramar_en_el_portal_...`, `test_si_la_cita_cambio_sin_evento_...` |
 
+## Dependencias bloqueadas
+
+La integración continua y la imagen Docker instalan las librerías desde archivos de bloqueo con versiones exactas y hashes
+(`requirements.lock` para ejecutar SaniBot y `requirements-dev.lock` para pruebas y análisis), y solo aceptan paquetes
+binarios (`--only-binary :all:`), de modo que no se ejecuta código de instalación de terceros. Para regenerarlos después de
+cambiar las dependencias de `pyproject.toml` (requiere internet):
+
+```bash
+pip install uv
+uv pip compile pyproject.toml -o requirements.lock --generate-hashes --python-version 3.12 --python-platform x86_64-unknown-linux-gnu
+uv pip compile pyproject.toml --extra dev -o requirements-dev.lock --generate-hashes --python-version 3.12 --python-platform x86_64-unknown-linux-gnu
+```
+
+Los archivos se generan para Linux con Python 3.12, que es el sistema de GitHub Actions y de la imagen Docker.
+
 ## WhatsApp real (API de WhatsApp Cloud)
 
 La guía completa está en [`docs/GUIA_WHATSAPP_REAL.md`](docs/GUIA_WHATSAPP_REAL.md). En resumen:
