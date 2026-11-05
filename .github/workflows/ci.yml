@@ -22,7 +22,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Instalar dependencias (versiones bloqueadas con hash, solo wheels)
-        run: pip install --only-binary :all: --require-hashes -r requirements-dev.lock
+        run: pip install --only-binary :all: --require-hashes -r requirements-dev.txt
       - name: Análisis estático (ruff)
         run: ruff check .
       - name: Pruebas con cobertura (mínimo 80 %)
@@ -39,6 +39,6 @@ jobs:
         with:
           python-version: "3.12"
       - name: Instalar pip-audit (versión bloqueada con hash, solo wheels)
-        run: pip install --only-binary :all: --require-hashes -r requirements-dev.lock
+        run: pip install --only-binary :all: --require-hashes -r requirements-dev.txt
       - name: Auditoría de dependencias vulnerables
-        run: pip-audit --strict --disable-pip --no-deps -r requirements.lock
+        run: pip-audit --strict --disable-pip --no-deps -r requirements.txt

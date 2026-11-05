@@ -165,14 +165,14 @@ Paciente ──HTTPS──▶ App web SaniBot ──▶ Backend SaniBot ──OA
 ## Dependencias bloqueadas
 
 La integración continua y la imagen Docker instalan las librerías desde archivos de bloqueo con versiones exactas y hashes
-(`requirements.lock` para ejecutar SaniBot y `requirements-dev.lock` para pruebas y análisis), y solo aceptan paquetes
+(`requirements.txt` para ejecutar SaniBot y `requirements-dev.txt` para pruebas y análisis), y solo aceptan paquetes
 binarios (`--only-binary :all:`), de modo que no se ejecuta código de instalación de terceros. Para regenerarlos después de
 cambiar las dependencias de `pyproject.toml` (requiere internet):
 
 ```bash
 pip install uv
-uv pip compile pyproject.toml -o requirements.lock --generate-hashes --python-version 3.12 --python-platform x86_64-unknown-linux-gnu
-uv pip compile pyproject.toml --extra dev -o requirements-dev.lock --generate-hashes --python-version 3.12 --python-platform x86_64-unknown-linux-gnu
+uv pip compile pyproject.toml -o requirements.txt --generate-hashes --python-version 3.12 --python-platform x86_64-unknown-linux-gnu
+uv pip compile pyproject.toml --extra dev -o requirements-dev.txt --generate-hashes --python-version 3.12 --python-platform x86_64-unknown-linux-gnu
 ```
 
 Los archivos se generan para Linux con Python 3.12, que es el sistema de GitHub Actions y de la imagen Docker.

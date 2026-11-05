@@ -4,8 +4,8 @@ WORKDIR /app
 RUN useradd --create-home --uid 10001 sanibot
 ENV PYTHONPATH=/app
 # Versiones exactas con hash y solo paquetes binarios: no se ejecuta código de instalación de terceros.
-COPY requirements.lock ./
-RUN pip install --no-cache-dir --only-binary :all: --require-hashes -r requirements.lock && mkdir -p /data && chown sanibot /data
+COPY requirements.txt ./
+RUN pip install --no-cache-dir --only-binary :all: --require-hashes -r requirements.txt && mkdir -p /data && chown sanibot /data
 COPY sanibot ./sanibot
 COPY mock_sanitas ./mock_sanitas
 COPY simulator ./simulator
